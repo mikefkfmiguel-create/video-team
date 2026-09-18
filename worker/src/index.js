@@ -181,7 +181,12 @@ async function handleStatus(req, env, h) {
   const token = req.headers.get('X-PIN') || url.searchParams.get('k') || '';
   const entry = token && (await env.FOTOS.get(`req:${token}`, 'json'));
   if (!entry) return json({ status: 'unknown' }, 200, h);
-  return json({ status: entry.status, name: entry.name, role: entry.status === 'approved' ? entry.role || 'video' : null }, 200, h);
+  return json({
+    status: entry.status,
+    name: entry.name,
+    role: entry.status === 'approved' ? entry.role || 'video' : null,
+    expiresAt: entry.status === 'approved' ? entry.expiresAt || null : null,
+  }, 200, h);
 }
 
 async function handleAdmin(url, req, env, h) {
@@ -326,7 +331,15 @@ export default {
         });
       }
 
-      if (url.pathname === '/api/ping') return json({ ok: true, role }, 200, h);
+      if (url.pathname === '/api/ping') {
+        // expiresAt so existe para acessos vindos de um pedido aprovado; a tua chave de admin nunca expira
+        let expiresAt = null;
+        if (!(await same(pin, env.VT_PIN_ADMIN))) {
+          const entry = await env.FOTOS.get(`req:${pin}`, 'json');
+          if (entry && entry.status === 'approved') expiresAt = entry.expiresAt || null;
+        }
+        return json({ ok: true, role, expiresAt }, 200, h);
+      }
       if (url.pathname === '/api/fotos') {
         // lista de ids de fotos (para o thumbs.py)
         const data = await getEscala(env, todayDMY());

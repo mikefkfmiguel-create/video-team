@@ -74,9 +74,9 @@
   var wrap = document.getElementById('wrap');
 
   // ---------- entrar na app ----------
-  function start(pin, role) {
+  function start(pin, role, expiresAt) {
     VideoTeam({
-      api: API, pin: pin, search: 'video', head: HEAD, role: role,
+      api: API, pin: pin, search: 'video', head: HEAD, role: role, expiresAt: expiresAt,
       onAuthFail: logout,
       onLogout: function () { if (confirm('Sair? Vais ter de pedir acesso outra vez.')) logout(); },
       onRequests: role === 'admin' ? function () { location.href = './?admin=pedidos'; } : null
@@ -93,7 +93,7 @@
   function showRequestForm(msg) {
     wrap.innerHTML =
       '<div class="card">' + SYM + '<h1>VIDEO<span> TEAM</span></h1>' +
-      '<p>' + (msg || 'Escala da equipa. Pede acesso com o teu email e aguarda aprovação.') + '</p>' +
+      '<p>' + (msg || 'Escala da equipa. Pede acesso com o teu email e aguarda aprovação.<br>O acesso dura 12 horas depois de aprovado.') + '</p>' +
       '<form id="f"><input id="em" type="email" inputmode="email" autocomplete="email" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="o.teu@email.com" maxlength="120" required>' +
       '<button id="go">Pedir acesso</button></form>' +
       '<div class="err" id="err"></div>' +
@@ -137,7 +137,7 @@
           if (x.r.ok && x.j.role) {
             set('vt.pin', pin);
             try { localStorage.removeItem('vt.cache'); localStorage.removeItem('vt.group'); } catch (e) {}
-            if (x.j.role === 'admin' && /admin=pedidos/.test(location.search)) showAdminPanel(pin); else start(pin, x.j.role);
+            if (x.j.role === 'admin' && /admin=pedidos/.test(location.search)) showAdminPanel(pin); else start(pin, x.j.role, x.j.expiresAt);
             return;
           }
           err.textContent = x.r.status === 401 ? 'Código errado.' : 'Erro ' + x.r.status + '.';
@@ -168,7 +168,7 @@
     fetch(API + '/api/status', { headers: { 'X-PIN': token } }).then(function (r) { return r.json(); }).then(function (j) {
       if (j.status === 'approved') {
         set('vt.pin', token); set('vt.reqtoken', null);
-        start(token, j.role);
+        start(token, j.role, j.expiresAt);
         return;
       }
       if (j.status === 'denied' || j.status === 'revoked' || j.status === 'unknown') {
@@ -246,7 +246,7 @@
       fetch(API + '/api/ping', { headers: { 'X-PIN': pin } }).then(function (r) { return r.json(); }).then(function (j) {
         if (!j.role) { logout(); return; }
         if (j.role === 'admin' && /admin=pedidos/.test(location.search)) showAdminPanel(pin);
-        else start(pin, j.role);
+        else start(pin, j.role, j.expiresAt);
       }).catch(function () { start(pin); }); // sem rede: tenta na mesma, o proprio app trata do erro
       return;
     }

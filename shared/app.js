@@ -470,6 +470,7 @@
     'select,input[type=search]{height:32px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);padding:0 10px;font:inherit;max-width:220px}input[type=search]{width:170px}',
     '.tog{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--mut);cursor:pointer;user-select:none}.tog input{accent-color:var(--acc)}',
     '#status{font-size:12px;color:var(--mut);display:inline-flex;align-items:center;gap:6px}.err{color:#ff5d73}',
+    '.exp{font-size:11px;color:var(--acc2);background:var(--soft);border-radius:999px;padding:3px 9px;white-space:nowrap}',
     '.main{flex:1;overflow:auto;position:relative}',
     '.grid{display:grid;grid-template-columns:230px repeat(var(--n),108px);width:max-content;min-width:100%}',
     '.gh{position:sticky;top:0;z-index:3;background:var(--panel);border-bottom:1px solid var(--line);height:52px}',
@@ -525,6 +526,7 @@
     '<div class="ctl"><div class="seg"><button data-view="grelha">Grelha</button><button data-view="dia">Dia</button></div>' +
     (forceOnly ? '' : '<label class="tog"><input type="checkbox" id="only"> só com marcação</label>') + '<select id="group"></select><input type="search" id="q" placeholder="Procurar…">' +
     '<button class="btn" id="reload" title="Atualizar">⟳</button><span id="status"></span>' +
+    (cfg.expiresAt ? '<span id="expires" class="exp">acesso até ' + pad(new Date(cfg.expiresAt).getHours()) + ':' + pad(new Date(cfg.expiresAt).getMinutes()) + '</span>' : '') +
     (cfg.onRequests ? '<button class="btn" id="requests" title="Pedidos de acesso">Pedidos</button>' : '') +
     (cfg.onLogout ? '<button class="btn" id="logout" title="Sair / mudar código">Sair</button>' : '') + '</div>' +
     '<a class="mark" title="MIKE APPS"><svg class="sym" viewBox="72 72 368 368" aria-hidden="true"><defs><linearGradient id="vtF" x1=".1" y1="0" x2=".9" y2="1"><stop offset="0" stop-color="#1246E6"/><stop offset="1" stop-color="#2E7BFF"/></linearGradient><linearGradient id="vtC" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22D3EE"/><stop offset="1" stop-color="#5FE9FF"/></linearGradient><linearGradient id="vtP" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2E7BFF"/><stop offset="1" stop-color="#22D3EE"/></linearGradient></defs><rect x="72" y="72" width="168" height="168" rx="30" fill="url(#vtF)"/><rect x="272" y="72" width="168" height="168" rx="64" fill="url(#vtC)"/><circle cx="156" cy="356" r="84" fill="#3B8CFF"/><path d="M306 296L306 416L410 356Z" fill="url(#vtP)" stroke="url(#vtP)" stroke-width="30" stroke-linejoin="round"/></svg><span><b>MIKE</b> APPS</span></a></div>' +
