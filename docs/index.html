@@ -5,37 +5,40 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Video Team</title>
 <meta name="description" content="Escala da equipa de vídeo">
-<meta name="theme-color" content="#171A21">
+<meta name="theme-color" content="#0C1020">
 <meta name="robots" content="noindex">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/favicon.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
-  :root { color-scheme: light dark; --bg: #f5f6f8; --panel: #fff; --ink: #16181d; --mut: #6b7280; --line: #e5e7eb; --acc: #c8102e; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #0f1115; --panel: #171a21; --ink: #e8eaf0; --mut: #9aa1ad; --line: #262a33; --acc: #ff4d5e; } }
+  :root { color-scheme: light dark; --bg: #f4f6fb; --panel: #fff; --ink: #0C1020; --mut: #5b6478; --line: #e1e6f0; --acc: #2E7BFF; --acc2: #1246E6; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0C1020; --panel: #131a2c; --ink: #e8ecf5; --mut: #8f9ab0; --line: #232c42; --acc: #3B8CFF; --acc2: #1246E6; } }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
   body { background: var(--bg); color: var(--ink); font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; display: grid; place-items: center; padding: 16px; }
   form { width: min(340px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 28px 24px; text-align: center; }
-  img { width: 64px; height: 64px; border-radius: 16px; }
-  h1 { margin: 14px 0 4px; font-size: 22px; letter-spacing: -.01em; }
-  h1 i { color: var(--acc); font-style: normal; }
+  .sym { width: 64px; height: 64px; }
+  h1 { margin: 18px 0 4px; font-size: 24px; letter-spacing: .04em; font-weight: 700; }
+  h1 span { font-weight: 300; opacity: .72; }
   p { margin: 0 0 20px; color: var(--mut); font-size: 13px; }
   input { width: 100%; height: 48px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font: inherit; font-size: 22px; text-align: center; letter-spacing: .3em; }
   input:focus { outline: 2px solid var(--acc); outline-offset: 1px; }
-  button { width: 100%; height: 44px; margin-top: 12px; border: 0; border-radius: 10px; background: var(--acc); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+  button { width: 100%; height: 44px; margin-top: 12px; border: 0; border-radius: 10px; background: linear-gradient(135deg, var(--acc2), var(--acc)); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
   button:disabled { opacity: .6; }
-  .err { color: var(--acc); min-height: 20px; margin: 10px 0 0; font-size: 13px; }
+  .by { margin-top: 18px; font-size: 11px; letter-spacing: .08em; color: var(--mut); opacity: .7; }
+  .by b { font-weight: 700; }
+  .err { color: #ff5d73; min-height: 20px; margin: 10px 0 0; font-size: 13px; }
 </style>
 </head>
 <body>
 <form id="f" hidden>
-  <img src="icons/icon-192.png" alt="">
-  <h1>Video<i>Team</i></h1>
+  <svg class="sym" viewBox="72 72 368 368" aria-hidden="true"><defs><linearGradient id="vtF" x1=".1" y1="0" x2=".9" y2="1"><stop offset="0" stop-color="#1246E6"/><stop offset="1" stop-color="#2E7BFF"/></linearGradient><linearGradient id="vtC" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22D3EE"/><stop offset="1" stop-color="#5FE9FF"/></linearGradient><linearGradient id="vtP" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2E7BFF"/><stop offset="1" stop-color="#22D3EE"/></linearGradient></defs><rect x="72" y="72" width="168" height="168" rx="30" fill="url(#vtF)"/><rect x="272" y="72" width="168" height="168" rx="64" fill="url(#vtC)"/><circle cx="156" cy="356" r="84" fill="#3B8CFF"/><path d="M306 296L306 416L410 356Z" fill="url(#vtP)" stroke="url(#vtP)" stroke-width="30" stroke-linejoin="round"/></svg>
+  <h1>VIDEO<span> TEAM</span></h1>
   <p>Escala da equipa. Mete o código de acesso.</p>
   <input id="pin" type="password" inputmode="numeric" autocomplete="current-password" aria-label="Código de acesso" required>
   <button id="go">Entrar</button>
   <div class="err" id="err"></div>
+  <div class="by"><b>MIKE</b> APPS</div>
 </form>
 <script src="app.js"></script>
 <script>
@@ -43,14 +46,24 @@
   var API = 'https://video-team.avkvideoshare.workers.dev';
   try { API = localStorage.getItem('vt.api') || API; } catch (e) {}
 
-  var HEAD = '<meta name="theme-color" content="#171A21"><link rel="manifest" href="manifest.json">' +
+  var HEAD = '<meta name="theme-color" content="#0C1020"><link rel="manifest" href="manifest.json">' +
     '<link rel="icon" href="icons/favicon.png"><link rel="apple-touch-icon" href="icons/apple-touch-icon.png">';
 
   function getPin() { try { return localStorage.getItem('vt.pin'); } catch (e) { return null; } }
   function setPin(v) { try { v ? localStorage.setItem('vt.pin', v) : localStorage.removeItem('vt.pin'); } catch (e) {} }
 
   function start(pin) {
-    VideoTeam({ api: API, pin: pin, search: 'video', head: HEAD, onAuthFail: function () { setPin(null); location.reload(); } });
+    VideoTeam({
+      api: API, pin: pin, search: 'video', head: HEAD,
+      onAuthFail: logout,
+      onLogout: function () { if (confirm('Sair? Vais ter de meter o código outra vez.')) logout(); }
+    });
+  }
+
+  function logout() {
+    setPin(null);
+    try { localStorage.removeItem('vt.cache'); localStorage.removeItem('vt.group'); } catch (e) {}
+    location.reload();
   }
 
   function ask() {

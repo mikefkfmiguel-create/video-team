@@ -34,7 +34,8 @@ function createWindow(cfg) {
     width: 1500,
     height: 900,
     title: 'Video Team',
-    backgroundColor: '#f5f6f8',
+    backgroundColor: '#0C1020',
+    icon: path.join(__dirname, 'icon.ico'),
     autoHideMenuBar: true,
     webPreferences: { partition: 'persist:7eventos' },
   });

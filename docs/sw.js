@@ -1,4 +1,4 @@
-const CACHE = "videoteam-v1";
+const CACHE = "videoteam-v2";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -6,6 +6,7 @@ const APP_SHELL = [
   "./manifest.json",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
+  "./icons/icon-maskable-512.png",
   "./icons/apple-touch-icon.png",
   "./icons/favicon.png"
 ];

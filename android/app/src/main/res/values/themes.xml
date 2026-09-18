@@ -7,5 +7,5 @@
         <item name="android:windowLightStatusBar">true</item>
     </style>
     <color name="bg">#FFFFFF</color>
-    <color name="brand">#C8102E</color>
+    <color name="brand">#0C1020</color>
 </resources>

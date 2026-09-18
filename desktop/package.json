@@ -20,11 +20,13 @@
       "main.js",
       "login.js",
       "app.js",
+      "icon.ico",
       "package.json"
     ],
     "win": {
       "target": "portable",
-      "signAndEditExecutable": false
+      "signAndEditExecutable": false,
+      "icon": "icon.ico"
     },
     "portable": {
       "artifactName": "VideoTeam.exe"
