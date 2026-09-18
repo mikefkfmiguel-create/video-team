@@ -11,35 +11,52 @@
 <link rel="icon" href="icons/favicon.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
-  :root { color-scheme: light dark; --bg: #f4f6fb; --panel: #fff; --ink: #0C1020; --mut: #5b6478; --line: #e1e6f0; --acc: #2E7BFF; --acc2: #1246E6; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #0C1020; --panel: #131a2c; --ink: #e8ecf5; --mut: #8f9ab0; --line: #232c42; --acc: #3B8CFF; --acc2: #1246E6; } }
+  :root { color-scheme: light dark; --bg: #f4f6fb; --panel: #fff; --ink: #0C1020; --mut: #5b6478; --line: #e1e6f0; --acc: #2E7BFF; --acc2: #1246E6; --soft: #eef1f8; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0C1020; --panel: #131a2c; --ink: #e8ecf5; --mut: #8f9ab0; --line: #232c42; --acc: #3B8CFF; --acc2: #1246E6; --soft: #182036; } }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; }
-  body { background: var(--bg); color: var(--ink); font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; display: grid; place-items: center; padding: 16px; }
-  form { width: min(340px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 28px 24px; text-align: center; }
+  html, body { margin: 0; min-height: 100%; }
+  body { background: var(--bg); color: var(--ink); font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; display: grid; place-items: start center; padding: 16px; }
+  .wrap { width: min(360px, 100%); margin-top: min(12vh, 90px); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 28px 24px; text-align: center; }
   .sym { width: 64px; height: 64px; }
   h1 { margin: 18px 0 4px; font-size: 24px; letter-spacing: .04em; font-weight: 700; }
   h1 span { font-weight: 300; opacity: .72; }
   p { margin: 0 0 20px; color: var(--mut); font-size: 13px; }
-  input { width: 100%; height: 48px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font: inherit; font-size: 22px; text-align: center; letter-spacing: .15em; }
+  input[type=text], input[type=password] { width: 100%; height: 48px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font: inherit; font-size: 17px; text-align: center; padding: 0 12px; }
+  input[type=password] { font-size: 22px; letter-spacing: .15em; }
   input:focus { outline: 2px solid var(--acc); outline-offset: 1px; }
   button { width: 100%; height: 44px; margin-top: 12px; border: 0; border-radius: 10px; background: linear-gradient(135deg, var(--acc2), var(--acc)); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
   button:disabled { opacity: .6; }
+  button.ghost { background: none; color: var(--mut); font-weight: 500; font-size: 13px; height: 32px; margin-top: 6px; text-decoration: underline; }
   .by { margin-top: 18px; font-size: 11px; letter-spacing: .08em; color: var(--mut); opacity: .7; }
   .by b { font-weight: 700; }
   .err { color: #ff5d73; min-height: 20px; margin: 10px 0 0; font-size: 13px; }
+  .spin { width: 26px; height: 26px; border: 3px solid var(--line); border-top-color: var(--acc); border-radius: 50%; margin: 4px auto 16px; animation: sp .8s linear infinite; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  [hidden] { display: none !important; }
+
+  /* painel de admin */
+  .panel { width: min(520px, 100%); }
+  .ph { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .ph .sym { width: 30px; height: 30px; }
+  .ph h1 { margin: 0; font-size: 18px; flex: 1; text-align: left; }
+  .ph a { color: var(--mut); font-size: 13px; text-decoration: none; border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; }
+  .grp { margin-bottom: 22px; }
+  .grp h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--mut); margin: 0 0 8px; }
+  .row { display: flex; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+  .row .who { flex: 1; text-align: left; min-width: 0; }
+  .row .who b { display: block; font-size: 14px; }
+  .row .who small { color: var(--mut); font-size: 12px; }
+  .row .acts { display: flex; gap: 6px; flex: none; }
+  .row button { width: auto; height: 32px; margin: 0; padding: 0 10px; font-size: 12px; border-radius: 7px; }
+  .row button.no { background: var(--soft); color: var(--ink); }
+  .row button.adm { background: var(--soft); color: var(--acc); }
+  .badge { background: var(--acc); color: #fff; border-radius: 999px; font-size: 11px; padding: 1px 7px; margin-left: 6px; }
+  .empty2 { color: var(--mut); font-size: 13px; padding: 6px 2px; }
 </style>
 </head>
 <body>
-<form id="f" hidden>
-  <svg class="sym" viewBox="72 72 368 368" aria-hidden="true"><defs><linearGradient id="vtF" x1=".1" y1="0" x2=".9" y2="1"><stop offset="0" stop-color="#1246E6"/><stop offset="1" stop-color="#2E7BFF"/></linearGradient><linearGradient id="vtC" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22D3EE"/><stop offset="1" stop-color="#5FE9FF"/></linearGradient><linearGradient id="vtP" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2E7BFF"/><stop offset="1" stop-color="#22D3EE"/></linearGradient></defs><rect x="72" y="72" width="168" height="168" rx="30" fill="url(#vtF)"/><rect x="272" y="72" width="168" height="168" rx="64" fill="url(#vtC)"/><circle cx="156" cy="356" r="84" fill="#3B8CFF"/><path d="M306 296L306 416L410 356Z" fill="url(#vtP)" stroke="url(#vtP)" stroke-width="30" stroke-linejoin="round"/></svg>
-  <h1>VIDEO<span> TEAM</span></h1>
-  <p>Escala da equipa. Mete o código de acesso.</p>
-  <input id="pin" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Código de acesso" required>
-  <button id="go">Entrar</button>
-  <div class="err" id="err"></div>
-  <div class="by"><b>MIKE</b> APPS</div>
-</form>
+<div class="wrap" id="wrap"></div>
 <script src="app.js"></script>
 <script>
   // Worker do Cloudflare que vai buscar a escala ao 7Eventos
@@ -49,45 +66,192 @@
   var HEAD = '<meta name="theme-color" content="#0C1020"><link rel="manifest" href="manifest.json">' +
     '<link rel="icon" href="icons/favicon.png"><link rel="apple-touch-icon" href="icons/apple-touch-icon.png">';
 
-  function getPin() { try { return localStorage.getItem('vt.pin'); } catch (e) { return null; } }
-  function setPin(v) { try { v ? localStorage.setItem('vt.pin', v) : localStorage.removeItem('vt.pin'); } catch (e) {} }
+  var SYM = '<svg class="sym" viewBox="72 72 368 368" aria-hidden="true"><defs><linearGradient id="vtF" x1=".1" y1="0" x2=".9" y2="1"><stop offset="0" stop-color="#1246E6"/><stop offset="1" stop-color="#2E7BFF"/></linearGradient><linearGradient id="vtC" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22D3EE"/><stop offset="1" stop-color="#5FE9FF"/></linearGradient><linearGradient id="vtP" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2E7BFF"/><stop offset="1" stop-color="#22D3EE"/></linearGradient></defs><rect x="72" y="72" width="168" height="168" rx="30" fill="url(#vtF)"/><rect x="272" y="72" width="168" height="168" rx="64" fill="url(#vtC)"/><circle cx="156" cy="356" r="84" fill="#3B8CFF"/><path d="M306 296L306 416L410 356Z" fill="url(#vtP)" stroke="url(#vtP)" stroke-width="30" stroke-linejoin="round"/></svg>';
 
-  function start(pin) {
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function set(k, v) { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch (e) {} }
+  var wrap = document.getElementById('wrap');
+
+  // ---------- entrar na app ----------
+  function start(pin, role) {
     VideoTeam({
-      api: API, pin: pin, search: 'video', head: HEAD,
+      api: API, pin: pin, search: 'video', head: HEAD, role: role,
       onAuthFail: logout,
-      onLogout: function () { if (confirm('Sair? Vais ter de meter o código outra vez.')) logout(); }
+      onLogout: function () { if (confirm('Sair? Vais ter de pedir acesso outra vez.')) logout(); },
+      onRequests: role === 'admin' ? function () { location.href = './?admin=pedidos'; } : null
     });
   }
 
   function logout() {
-    setPin(null);
+    set('vt.pin', null); set('vt.reqtoken', null); set('vt.reqname', null);
     try { localStorage.removeItem('vt.cache'); localStorage.removeItem('vt.group'); } catch (e) {}
-    location.reload();
+    location.href = './';
   }
 
-  function ask() {
-    var f = document.getElementById('f'), err = document.getElementById('err'), go = document.getElementById('go');
-    f.hidden = false;
+  // ---------- pedir acesso ----------
+  function showRequestForm(msg) {
+    wrap.innerHTML =
+      '<div class="card">' + SYM + '<h1>VIDEO<span> TEAM</span></h1>' +
+      '<p>' + (msg || 'Escala da equipa. Pede acesso e aguarda aprovação.') + '</p>' +
+      '<form id="f"><input id="nm" type="text" autocomplete="name" placeholder="O teu nome" maxlength="60" required>' +
+      '<button id="go">Pedir acesso</button></form>' +
+      '<div class="err" id="err"></div>' +
+      '<button class="ghost" id="adm">Sou admin</button>' +
+      '<div class="by"><b>MIKE</b> APPS</div></div>';
+    document.getElementById('nm').focus();
+    document.getElementById('f').onsubmit = function (e) {
+      e.preventDefault();
+      var name = document.getElementById('nm').value.trim();
+      var go = document.getElementById('go'), err = document.getElementById('err');
+      go.disabled = true; err.textContent = '';
+      fetch(API + '/api/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name }) })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (!j.token) { err.textContent = j.error || 'Não consegui enviar o pedido.'; go.disabled = false; return; }
+          set('vt.reqtoken', j.token); set('vt.reqname', name);
+          showPending();
+        })
+        .catch(function () { err.textContent = 'Sem ligação ao servidor.'; go.disabled = false; });
+    };
+    document.getElementById('adm').onclick = showAdminLogin;
+  }
+
+  function showAdminLogin() {
+    wrap.innerHTML =
+      '<div class="card">' + SYM + '<h1>VIDEO<span> TEAM</span></h1>' +
+      '<p>Código de admin.</p>' +
+      '<form id="f"><input id="pin" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" required>' +
+      '<button id="go">Entrar</button></form><div class="err" id="err"></div>' +
+      '<button class="ghost" id="back">‹ Pedir acesso</button>' +
+      '<div class="by"><b>MIKE</b> APPS</div></div>';
     document.getElementById('pin').focus();
-    f.onsubmit = function (e) {
+    document.getElementById('back').onclick = function () { showRequestForm(); };
+    document.getElementById('f').onsubmit = function (e) {
       e.preventDefault();
       var pin = document.getElementById('pin').value.trim();
+      var go = document.getElementById('go'), err = document.getElementById('err');
       go.disabled = true; err.textContent = '';
-      fetch(API + '/api/ping', { headers: { 'X-PIN': pin } }).then(function (r) {
-        if (r.ok) { setPin(pin); try { localStorage.removeItem('vt.cache'); localStorage.removeItem('vt.group'); } catch (e) {} start(pin); return; }
-        err.textContent = r.status === 401 ? 'Código errado.' : 'Erro ' + r.status + '.';
-      }).catch(function () {
-        err.textContent = 'Sem ligação ao servidor.';
-      }).then(function () { go.disabled = false; });
+      fetch(API + '/api/ping', { headers: { 'X-PIN': pin } }).then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+        .then(function (x) {
+          if (x.r.ok && x.j.role) {
+            set('vt.pin', pin);
+            try { localStorage.removeItem('vt.cache'); localStorage.removeItem('vt.group'); } catch (e) {}
+            if (x.j.role === 'admin' && /admin=pedidos/.test(location.search)) showAdminPanel(pin); else start(pin, x.j.role);
+            return;
+          }
+          err.textContent = x.r.status === 401 ? 'Código errado.' : 'Erro ' + x.r.status + '.';
+        }).catch(function () { err.textContent = 'Sem ligação ao servidor.'; })
+        .then(function () { go.disabled = false; });
     };
   }
 
+  // ---------- a aguardar aprovacao ----------
+  var pollTimer, pollDelay = 5000;
+  function showPending() {
+    clearTimeout(pollTimer);
+    var name = get('vt.reqname') || '';
+    wrap.innerHTML =
+      '<div class="card">' + SYM + '<h1>VIDEO<span> TEAM</span></h1>' +
+      '<div class="spin"></div>' +
+      '<p>Olá, ' + esc(name) + '. O teu pedido foi enviado — só falta um admin aprovar.</p>' +
+      '<button class="ghost" id="cancel">Cancelar pedido</button>' +
+      '<div class="by"><b>MIKE</b> APPS</div></div>';
+    document.getElementById('cancel').onclick = function () { set('vt.reqtoken', null); set('vt.reqname', null); showRequestForm(); };
+    pollDelay = 5000;
+    poll();
+  }
+
+  function poll() {
+    var token = get('vt.reqtoken');
+    if (!token) return;
+    fetch(API + '/api/status', { headers: { 'X-PIN': token } }).then(function (r) { return r.json(); }).then(function (j) {
+      if (j.status === 'approved') {
+        set('vt.pin', token); set('vt.reqtoken', null);
+        start(token, j.role);
+        return;
+      }
+      if (j.status === 'denied' || j.status === 'revoked' || j.status === 'unknown') {
+        set('vt.reqtoken', null); set('vt.reqname', null);
+        showRequestForm(j.status === 'unknown' ? undefined : 'O teu pedido anterior foi recusado. Podes pedir outra vez.');
+        return;
+      }
+      pollDelay = Math.min(pollDelay + 5000, 30000);
+      pollTimer = setTimeout(poll, pollDelay);
+    }).catch(function () { pollTimer = setTimeout(poll, pollDelay); });
+  }
+
+  // ---------- painel de admin: aprovar / recusar / revogar pedidos ----------
+  function showAdminPanel(pin) {
+    wrap.className = 'panel';
+    wrap.innerHTML =
+      '<div class="ph">' + SYM.replace('class="sym"', 'class="sym"') + '<h1>Pedidos de acesso</h1><a id="app" href="#">Ver escala →</a></div>' +
+      '<div id="lists"><p class="empty2">A carregar…</p></div>';
+    document.getElementById('app').onclick = function (e) { e.preventDefault(); start(pin, 'admin'); };
+    loadRequests(pin);
+  }
+
+  function loadRequests(pin) {
+    fetch(API + '/api/admin/requests', { headers: { 'X-PIN': pin } }).then(function (r) {
+      if (r.status === 401) { logout(); throw new Error('sessão'); }
+      return r.json();
+    }).then(function (items) {
+      var groups = { pending: [], approved: [], other: [] };
+      items.forEach(function (it) { (groups[it.status] || groups.other).push(it); });
+      var html = '';
+      html += section('A aguardar aprovação', groups.pending, function (it) {
+        return actBtn(it.token, 'deny', 'no', 'Recusar') + actBtn(it.token, 'approve', 'adm', 'Admin') + actBtn(it.token, 'approve', '', 'Aprovar');
+      }, 'Ninguém à espera.');
+      html += section('Com acesso', groups.approved, function (it) {
+        return (it.role === 'admin' ? '<span class="badge">admin</span>' : '') + actBtn(it.token, 'revoke', 'no', 'Revogar');
+      }, 'Ainda ninguém.');
+      document.getElementById('lists').innerHTML = html;
+      document.querySelectorAll('[data-act]').forEach(function (b) {
+        b.onclick = function () {
+          var body = { token: b.dataset.token };
+          if (b.dataset.role) body.role = b.dataset.role;
+          fetch(API + '/api/admin/' + b.dataset.act, { method: 'POST', headers: { 'X-PIN': pin, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+            .then(function () { loadRequests(pin); });
+        };
+      });
+    }).catch(function () {});
+  }
+
+  function actBtn(token, act, cls, label) {
+    var role = act === 'approve' && cls === 'adm' ? ' data-role="admin"' : '';
+    return '<button class="' + cls + '" data-act="' + act + '" data-token="' + esc(token) + '"' + role + '>' + label + '</button>';
+  }
+
+  function section(title, items, actions, emptyMsg) {
+    var h = '<div class="grp"><h2>' + title + ' (' + items.length + ')</h2>';
+    if (!items.length) return h + '<p class="empty2">' + emptyMsg + '</p></div>';
+    items.forEach(function (it) {
+      h += '<div class="row"><div class="who"><b>' + esc(it.name) + '</b><small>' + when(it.requestedAt) + '</small></div><div class="acts">' + actions(it) + '</div></div>';
+    });
+    return h + '</div>';
+  }
+
+  function when(ts) {
+    var d = new Date(ts), n = new Date();
+    var same = d.toDateString() === n.toDateString();
+    return (same ? 'hoje' : d.toLocaleDateString('pt-PT')) + ' ' + d.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  // ---------- arranque ----------
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
-  // so depois do parse acabar: o VideoTeam substitui o documento com document.open()
+
   document.addEventListener('DOMContentLoaded', function () {
-    var saved = getPin();
-    if (saved) start(saved); else ask();
+    var pin = get('vt.pin');
+    if (pin) {
+      fetch(API + '/api/ping', { headers: { 'X-PIN': pin } }).then(function (r) { return r.json(); }).then(function (j) {
+        if (!j.role) { logout(); return; }
+        if (j.role === 'admin' && /admin=pedidos/.test(location.search)) showAdminPanel(pin);
+        else start(pin, j.role);
+      }).catch(function () { start(pin); }); // sem rede: tenta na mesma, o proprio app trata do erro
+      return;
+    }
+    if (get('vt.reqtoken')) { showPending(); return; }
+    showRequestForm();
   });
 </script>
 </body>

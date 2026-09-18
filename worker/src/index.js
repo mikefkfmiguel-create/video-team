@@ -1,6 +1,8 @@
 // Video Team — Worker que faz de ponte entre a pagina (GitHub Pages) e o 7Eventos.
 // Faz login com as credenciais guardadas como segredos, le a escala e devolve JSON.
-// So LE dados. Segredos: VT_USER, VT_PASSWORD, VT_PIN (equipa: so video), VT_PIN_ADMIN (tudo).
+// So LE dados.
+// Segredos: VT_USER, VT_PASSWORD (login no 7Eventos), VT_PIN_ADMIN (a tua chave de admin).
+// O acesso da equipa (e de outros admins) e por pedido + aprovacao — ver secao "pedidos de acesso".
 // Variavel: ALLOWED_ORIGINS.
 import { parseEscala } from './parse.js';
 
@@ -8,7 +10,7 @@ const BASE = 'http://7eventos.avk.pt/7Eventos';
 // A escala so e lida do 7Eventos pelo cron (poucas vezes ao dia), pela primeira pessoa
 // que pede uma semana que ainda nao existe, ou pelo botao atualizar (no maximo 1x/10 min).
 const MIN_REFRESH = 10 * 60 * 1000;
-const KEEP = 2 * 24 * 3600; // copia no KV (s)
+const KEEP = 2 * 24 * 3600; // copia da escala no KV (s)
 
 // cookies da sessao 7Eventos, vivem enquanto o isolate estiver quente
 let jar = {};
@@ -96,8 +98,8 @@ function cors(req, env) {
   const allowed = (env.ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
   return {
     'Access-Control-Allow-Origin': allowed.includes(origin) ? origin : allowed[0] || '*',
-    'Access-Control-Allow-Headers': 'X-PIN',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Headers': 'X-PIN, Content-Type',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin',
   };
@@ -118,6 +120,14 @@ function json(data, status, headers) {
   });
 }
 
+async function readJson(req) {
+  try {
+    return await req.json();
+  } catch (e) {
+    return null;
+  }
+}
+
 async function same(a, b) {
   if (!a || !b) return false;
   const enc = new TextEncoder();
@@ -125,14 +135,87 @@ async function same(a, b) {
   return crypto.subtle.timingSafeEqual(x, y);
 }
 
-// 'admin' ve todos os grupos; 'video' so os tecnicos de video
+function randomToken() {
+  const b = crypto.getRandomValues(new Uint8Array(20));
+  return [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
+}
+
+function normName(s) {
+  return String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+// ---------- pedidos de acesso ----------
+// Cada pedido fica em req:<token> = {name, status, requestedAt, approvedAt?, role?}
+// status: pending | approved | denied | revoked. role (quando aprovado): 'video' | 'admin'.
+// O token so e conhecido por quem pediu (guardado no telemovel dele) e por ti (painel de admin).
+
+async function handleRequest(req, env, h) {
+  const body = await readJson(req);
+  const name = String((body && body.name) || '').trim().slice(0, 60);
+  if (name.length < 2) return json({ error: 'nome invalido' }, 400, h);
+  const norm = normName(name);
+  const prevToken = await env.FOTOS.get(`byname:${norm}`);
+  if (prevToken) {
+    const prev = await env.FOTOS.get(`req:${prevToken}`, 'json');
+    // um pedido ja pendente com o mesmo nome nao cria outro — devolve o mesmo
+    if (prev && prev.status === 'pending') return json({ token: prevToken, status: 'pending' }, 200, h);
+  }
+  const token = randomToken();
+  const entry = { name, status: 'pending', requestedAt: Date.now() };
+  await env.FOTOS.put(`req:${token}`, JSON.stringify(entry));
+  await env.FOTOS.put(`byname:${norm}`, token);
+  return json({ token, status: 'pending' }, 200, h);
+}
+
+async function handleStatus(req, env, h) {
+  const url = new URL(req.url);
+  const token = req.headers.get('X-PIN') || url.searchParams.get('k') || '';
+  const entry = token && (await env.FOTOS.get(`req:${token}`, 'json'));
+  if (!entry) return json({ status: 'unknown' }, 200, h);
+  return json({ status: entry.status, name: entry.name, role: entry.status === 'approved' ? entry.role || 'video' : null }, 200, h);
+}
+
+async function handleAdmin(url, req, env, h) {
+  if (url.pathname === '/api/admin/requests' && req.method === 'GET') {
+    const list = await env.FOTOS.list({ prefix: 'req:' });
+    const items = [];
+    for (const k of list.keys) {
+      const v = await env.FOTOS.get(k.name, 'json');
+      if (v) items.push({ token: k.name.slice(4), ...v });
+    }
+    const order = { pending: 0, approved: 1, denied: 2, revoked: 3 };
+    items.sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9) || b.requestedAt - a.requestedAt);
+    return json(items, 200, h);
+  }
+  const m = url.pathname.match(/^\/api\/admin\/(approve|deny|revoke)$/);
+  if (m && req.method === 'POST') {
+    const body = await readJson(req);
+    const token = String((body && body.token) || '');
+    const entry = await env.FOTOS.get(`req:${token}`, 'json');
+    if (!entry) return json({ error: 'pedido nao encontrado' }, 404, h);
+    if (m[1] === 'approve') {
+      entry.status = 'approved';
+      entry.role = body && body.role === 'admin' ? 'admin' : 'video';
+      entry.approvedAt = Date.now();
+    } else {
+      entry.status = m[1] === 'deny' ? 'denied' : 'revoked';
+    }
+    await env.FOTOS.put(`req:${token}`, JSON.stringify(entry));
+    return json({ ok: true, status: entry.status, role: entry.role }, 200, h);
+  }
+  return json({ error: 'nada aqui' }, 404, h);
+}
+
+// 'admin' ve todos os grupos e o painel de pedidos; 'video' so os tecnicos de video
 async function roleOf(pin, env) {
+  if (!pin) return null;
   if (await same(pin, env.VT_PIN_ADMIN)) return 'admin';
-  if (await same(pin, env.VT_PIN)) return 'video';
+  const entry = await env.FOTOS.get(`req:${pin}`, 'json');
+  if (entry && entry.status === 'approved') return entry.role || 'video';
   return null;
 }
 
-const isVideo = (p) => p.grupo.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes('video');
+const isVideo = (p) => p.grupo.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().includes('video');
 
 function forRole(data, role) {
   return role === 'admin' ? data : { ...data, people: data.people.filter(isVideo) };
@@ -148,16 +231,30 @@ export default {
     const url = new URL(req.url);
     const h = cors(req, env);
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: h });
-    if (req.method !== 'GET') return json({ error: 'metodo' }, 405, h);
-
-    const pin = req.headers.get('X-PIN') || url.searchParams.get('k');
-    const role = await roleOf(pin, env);
-    if (!role) {
-      await new Promise((r) => setTimeout(r, 800)); // trava tentativas em serie
-      return json({ error: 'pin' }, 401, h);
-    }
 
     try {
+      // pedir acesso e ver o estado do pedido: sem PIN, e o ponto de entrada de quem ainda nao tem nada
+      if (url.pathname === '/api/request' && req.method === 'POST') return handleRequest(req, env, h);
+      if (url.pathname === '/api/status' && req.method === 'GET') return handleStatus(req, env, h);
+
+      if (req.method !== 'GET' && !url.pathname.startsWith('/api/admin/')) return json({ error: 'metodo' }, 405, h);
+
+      const pin = req.headers.get('X-PIN') || url.searchParams.get('k');
+      const role = await roleOf(pin, env);
+
+      if (url.pathname.startsWith('/api/admin/')) {
+        if (role !== 'admin') {
+          await new Promise((r) => setTimeout(r, 800));
+          return json({ error: 'pin' }, 401, h);
+        }
+        return handleAdmin(url, req, env, h);
+      }
+
+      if (!role) {
+        await new Promise((r) => setTimeout(r, 800)); // trava tentativas em serie
+        return json({ error: 'pin' }, 401, h);
+      }
+
       // /api/escala?d=dd-mm-yyyy
       if (url.pathname === '/api/escala') {
         const d = url.searchParams.get('d') || '';

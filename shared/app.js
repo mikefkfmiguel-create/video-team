@@ -523,6 +523,7 @@
     '<div class="ctl"><div class="seg"><button data-view="grelha">Grelha</button><button data-view="dia">Dia</button></div>' +
     '<label class="tog"><input type="checkbox" id="only"> só com marcação</label><select id="group"></select><input type="search" id="q" placeholder="Procurar…">' +
     '<button class="btn" id="reload" title="Atualizar">⟳</button><span id="status"></span>' +
+    (cfg.onRequests ? '<button class="btn" id="requests" title="Pedidos de acesso">Pedidos</button>' : '') +
     (cfg.onLogout ? '<button class="btn" id="logout" title="Sair / mudar código">Sair</button>' : '') + '</div>' +
     '<a class="mark" title="MIKE APPS"><svg class="sym" viewBox="72 72 368 368" aria-hidden="true"><defs><linearGradient id="vtF" x1=".1" y1="0" x2=".9" y2="1"><stop offset="0" stop-color="#1246E6"/><stop offset="1" stop-color="#2E7BFF"/></linearGradient><linearGradient id="vtC" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22D3EE"/><stop offset="1" stop-color="#5FE9FF"/></linearGradient><linearGradient id="vtP" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2E7BFF"/><stop offset="1" stop-color="#22D3EE"/></linearGradient></defs><rect x="72" y="72" width="168" height="168" rx="30" fill="url(#vtF)"/><rect x="272" y="72" width="168" height="168" rx="64" fill="url(#vtC)"/><circle cx="156" cy="356" r="84" fill="#3B8CFF"/><path d="M306 296L306 416L410 356Z" fill="url(#vtP)" stroke="url(#vtP)" stroke-width="30" stroke-linejoin="round"/></svg><span><b>MIKE</b> APPS</span></a></div>' +
     '<div class="main" id="main"></div>' +
@@ -538,6 +539,7 @@
   var only = document.getElementById('only');
   only.checked = state.onlyBooked;
   only.onchange = function () { state.onlyBooked = only.checked; store('vt.only', only.checked ? '1' : '0'); paint(false); };
+  if (cfg.onRequests) document.getElementById('requests').onclick = function () { cfg.onRequests(); };
   if (cfg.onLogout) document.getElementById('logout').onclick = function () { cfg.onLogout(); };
   document.getElementById('reload').onclick = function () { load(true); };
   document.getElementById('group').onchange = function (e) { state.group = e.target.value; store('vt.group', state.group); paint(true); };
