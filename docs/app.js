@@ -128,7 +128,8 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
   function dmyOf(d) { return pad(d.getDate()) + '-' + pad(d.getMonth() + 1) + '-' + d.getFullYear(); }
 
   // quiet: atualizacao automatica — se nada mudou, nao redesenha (mantem scroll e dia)
-  function load(fresh, quiet) {
+  // force: redesenha na mesma mesmo que os dados nao tenham mudado (ex: botao Hoje)
+  function load(fresh, quiet, force) {
     var d = state.anchor, unchanged = false;
     state.loading = true; state.error = null; paintStatus();
     var dmy = dmyOf(d);
@@ -143,7 +144,7 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
       state.error = e.message || String(e);
     }).then(function () {
       state.loading = false;
-      if (unchanged || (quiet && state.error)) paintStatus();
+      if ((unchanged && !force) || (quiet && state.error)) paintStatus();
       else paint(!quiet);
     });
   }
@@ -537,7 +538,7 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
   document.close();
 
   // ---------- eventos ----------
-  function shift(n) { state.anchor = n === 0 ? new Date() : addDays(state.anchor, n); load(); }
+  function shift(n) { state.anchor = n === 0 ? new Date() : addDays(state.anchor, n); load(false, false, n === 0); }
   document.getElementById('prev').onclick = function () { shift(-7); };
   document.getElementById('next').onclick = function () { shift(7); };
   document.getElementById('today').onclick = function () { state.day = TODAY; shift(0); };
