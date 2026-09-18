@@ -278,6 +278,52 @@
     return h + '</div>';
   }
 
+  // agenda de uma pessoa em blocos: dias seguidos com a mesma marcacao juntam-se
+  function runsOf(p) {
+    var days = state.data.days, out = [];
+    days.forEach(function (k) {
+      var list = p.cells[k] || [];
+      var key = list.map(sig).join('|');
+      var last = out[out.length - 1];
+      if (last && last.key === key && keyOf(addDays(fromKey(last.to), 1)) === k) last.to = k;
+      else out.push({ key: key, from: k, to: k, list: list });
+    });
+    return out;
+  }
+
+  function renderAgenda(ps) {
+    var h = '<div class="dayv">';
+    ps.forEach(function (p) {
+      h += '<section class="agp"><button class="agh" data-person="' + esc(p.id) + '">' + avatar(p, 44) +
+        '<div><h2>' + esc(p.name) + '</h2><p>' + esc(p.grupo) + (p.stats ? ' · ' + esc(p.stats) : '') + '</p></div></button>';
+      runsOf(p).forEach(function (run) {
+        var n = state.data.days.indexOf(run.to) - state.data.days.indexOf(run.from) + 1;
+        var when = run.from === run.to ? fmtDay(run.from, true) : fmtDay(run.from, true) + ' – ' + fmtDay(run.to, true);
+        var now = run.from <= TODAY && TODAY <= run.to;
+        if (!run.list.length) {
+          h += '<div class="run free' + (now ? ' now' : '') + '"><span class="rw">' + esc(when) + '</span><span class="mut">livre' + (n > 1 ? ' · ' + n + ' dias' : '') + '</span></div>';
+          return;
+        }
+        run.list.forEach(function (e, j) {
+          if (e.kind === 'inc') {
+            h += '<div class="run' + (now ? ' now' : '') + '"><span class="rw">' + (j ? '' : esc(when)) + '</span><span><span class="chip inc inc-' + esc(e.code) + '"><b>' + esc(e.code) + '</b></span> <span class="mut">' + esc(e.label) + (n > 1 ? ' · ' + n + ' dias' : '') + '</span></span></div>';
+            return;
+          }
+          h += '<button class="run os' + (now ? ' now' : '') + '" style="--h:' + hue(e.code) + '" data-person="' + esc(p.id) + '" data-day="' + run.from + '" data-i="' + j + '">' +
+            '<span class="rw">' + (j ? '' : esc(when)) + '</span><span class="rb"><b>' + esc(e.event || 'OS ' + e.code) + '</b>' +
+            '<small>OS ' + esc(e.osFull) + (e.client ? ' · ' + esc(e.client) : '') + (e.hor ? ' · ' + esc(e.hor) : '') + (n > 1 ? ' · ' + n + ' dias' : '') + '</small></span></button>';
+        });
+      });
+      h += '</section>';
+    });
+    return h + '</div>';
+  }
+
+  function personSearch(ps) {
+    var q = norm(state.q);
+    return q.length >= 3 && ps.length > 0 && ps.length <= 3 && ps.every(function (p) { return norm(p.name).indexOf(q) >= 0; });
+  }
+
   // ---------- detalhe ----------
   function findPerson(id) { return state.data.people.filter(function (p) { return p.id === id; })[0]; }
 
@@ -364,7 +410,7 @@
     var ps = visiblePeople();
     var keepX = main.scrollLeft, keepY = main.scrollTop;
     main.className = 'main v-' + state.view;
-    main.innerHTML = !ps.length ? '<p class="empty">Nenhum técnico corresponde ao filtro.</p>' : state.view === 'grelha' ? renderGrid(ps) : renderDay(ps);
+    main.innerHTML = !ps.length ? '<p class="empty">Nenhum técnico corresponde ao filtro.</p>' : state.view === 'grelha' ? renderGrid(ps) : personSearch(ps) ? renderAgenda(ps) : renderDay(ps);
     if (state.view === 'grelha') {
       if (scrollToday) {
         var t = main.querySelector('.gh.day.today'), c0 = main.querySelector('.gh.corner');
@@ -430,6 +476,11 @@
     '.sh-p{display:flex;gap:14px;align-items:center;margin-right:40px}.mut{color:var(--mut)}',
     '.agenda{list-style:none;padding:0;margin:16px 0 0}.agenda li{display:flex;gap:12px;padding:8px 6px;border-bottom:1px solid var(--line);font-size:13px}.agenda li.we,.agenda li.sp{background:var(--sp)}.agenda li.today{box-shadow:inset 3px 0 0 var(--acc)}',
     '.ad{width:92px;flex:none;color:var(--mut);text-transform:capitalize}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:hsl(var(--h) 60% 50%);margin-right:6px}',
+    '.agp{margin-bottom:28px}.agh{display:flex;align-items:center;gap:12px;margin:4px 0 12px;text-align:left}.agh h2{margin:0!important;font-size:20px}.agh p{margin:2px 0 0;color:var(--mut);font-size:12px}',
+    '.run{display:flex;gap:12px;align-items:center;width:100%;text-align:left;padding:10px 12px;margin-bottom:6px;border-radius:10px;background:var(--panel);box-shadow:var(--shadow)}',
+    '.run.os{border-left:4px solid hsl(var(--h) 60% 50%)}.run.free{background:transparent;box-shadow:none;border:1px dashed var(--line);padding:6px 12px}.run.now{outline:2px solid var(--acc);outline-offset:1px}',
+    '.rw{width:170px;flex:none;font-size:12px;color:var(--mut);text-transform:capitalize}.rb{display:flex;flex-direction:column;min-width:0}.rb small{color:var(--mut);font-size:12px}',
+    '@media (max-width:760px){.run{flex-direction:column;align-items:flex-start;gap:2px}.rw{width:auto}}',
     '@media (max-width:760px){.top{padding:8px 12px}#range{display:none}.mark{position:absolute;top:12px;left:122px}.mark span{display:none}.mark .sym{width:16px;height:16px}input[type=search]{width:120px}select{max-width:150px}.grid{grid-template-columns:150px repeat(var(--n),96px)}.who .av{display:none}.who small{display:none}.dayv{padding:12px}}'
   ].join('\n');
 
