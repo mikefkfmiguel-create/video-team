@@ -1,6 +1,7 @@
 // Video Team — Worker que faz de ponte entre a pagina (GitHub Pages) e o 7Eventos.
 // Faz login com as credenciais guardadas como segredos, le a escala e devolve JSON.
-// So LE dados. Segredos: VT_USER, VT_PASSWORD, VT_PIN. Variavel: ALLOWED_ORIGINS.
+// So LE dados. Segredos: VT_USER, VT_PASSWORD, VT_PIN (equipa: so video), VT_PIN_ADMIN (tudo).
+// Variavel: ALLOWED_ORIGINS.
 import { parseEscala } from './parse.js';
 
 const BASE = 'http://7eventos.avk.pt/7Eventos';
@@ -104,14 +105,24 @@ function json(data, status, headers) {
   });
 }
 
-async function pinOk(pin, env) {
-  if (!env.VT_PIN || !pin) return false;
+async function same(a, b) {
+  if (!a || !b) return false;
   const enc = new TextEncoder();
-  const [a, b] = await Promise.all([
-    crypto.subtle.digest('SHA-256', enc.encode(pin)),
-    crypto.subtle.digest('SHA-256', enc.encode(env.VT_PIN)),
-  ]);
-  return crypto.subtle.timingSafeEqual(a, b);
+  const [x, y] = await Promise.all([crypto.subtle.digest('SHA-256', enc.encode(a)), crypto.subtle.digest('SHA-256', enc.encode(b))]);
+  return crypto.subtle.timingSafeEqual(x, y);
+}
+
+// 'admin' ve todos os grupos; 'video' so os tecnicos de video
+async function roleOf(pin, env) {
+  if (await same(pin, env.VT_PIN_ADMIN)) return 'admin';
+  if (await same(pin, env.VT_PIN)) return 'video';
+  return null;
+}
+
+const isVideo = (p) => p.grupo.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes('video');
+
+function forRole(data, role) {
+  return role === 'admin' ? data : { ...data, people: data.people.filter(isVideo) };
 }
 
 export default {
@@ -127,7 +138,8 @@ export default {
     if (req.method !== 'GET') return json({ error: 'metodo' }, 405, h);
 
     const pin = req.headers.get('X-PIN') || url.searchParams.get('k');
-    if (!(await pinOk(pin, env))) {
+    const role = await roleOf(pin, env);
+    if (!role) {
       await new Promise((r) => setTimeout(r, 800)); // trava tentativas em serie
       return json({ error: 'pin' }, 401, h);
     }
@@ -142,10 +154,10 @@ export default {
           if (hit) {
             const data = await hit.json();
             if (Date.now() - data.at > FRESH) ctx.waitUntil(fetchEscala(env, d).catch(() => {}));
-            return json(data, 200, h);
+            return json(forRole(data, role), 200, h);
           }
         }
-        return json(await fetchEscala(env, d), 200, h);
+        return json(forRole(await fetchEscala(env, d), role), 200, h);
       }
 
       // /foto/203  -> foto do tecnico
@@ -170,7 +182,7 @@ export default {
         return new Response(img.body, { headers: { ...h, 'Content-Type': img.headers.get('Content-Type'), 'Cache-Control': 'private, max-age=86400' } });
       }
 
-      if (url.pathname === '/api/ping') return json({ ok: true }, 200, h);
+      if (url.pathname === '/api/ping') return json({ ok: true, role }, 200, h);
       if (url.pathname === '/api/fotos') {
         // lista de ids de fotos (para o thumbs.py)
         const hit = await caches.default.match(escalaKey(todayDMY()));

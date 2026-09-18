@@ -32,8 +32,8 @@
 <form id="f" hidden>
   <img src="icons/icon-192.png" alt="">
   <h1>Video<i>Team</i></h1>
-  <p>Escala da equipa. Mete o PIN que te deram.</p>
-  <input id="pin" type="password" inputmode="numeric" autocomplete="current-password" aria-label="PIN" required>
+  <p>Escala da equipa. Mete o código de acesso.</p>
+  <input id="pin" type="password" inputmode="numeric" autocomplete="current-password" aria-label="Código de acesso" required>
   <button id="go">Entrar</button>
   <div class="err" id="err"></div>
 </form>
@@ -62,8 +62,8 @@
       var pin = document.getElementById('pin').value.trim();
       go.disabled = true; err.textContent = '';
       fetch(API + '/api/ping', { headers: { 'X-PIN': pin } }).then(function (r) {
-        if (r.ok) { setPin(pin); start(pin); return; }
-        err.textContent = r.status === 401 ? 'PIN errado.' : 'Erro ' + r.status + '.';
+        if (r.ok) { setPin(pin); try { localStorage.removeItem('vt.cache'); localStorage.removeItem('vt.group'); } catch (e) {} start(pin); return; }
+        err.textContent = r.status === 401 ? 'Código errado.' : 'Erro ' + r.status + '.';
       }).catch(function () {
         err.textContent = 'Sem ligação ao servidor.';
       }).then(function () { go.disabled = false; });

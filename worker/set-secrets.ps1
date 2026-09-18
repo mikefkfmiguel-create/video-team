@@ -5,6 +5,5 @@ Set-Location $PSScriptRoot
 $cfg = Get-Content ..\config.json -Raw | ConvertFrom-Json
 $cfg.user     | npx wrangler secret put VT_USER
 $cfg.password | npx wrangler secret put VT_PASSWORD
-$pin = Read-Host 'PIN para a equipa (o que vais partilhar)'
-$pin          | npx wrangler secret put VT_PIN
+& .\set-pins.ps1
 Write-Host 'Segredos enviados.'

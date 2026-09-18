@@ -101,7 +101,7 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
   function fetchData(dmy, fresh) {
     if (cfg.api) {
       return fetch(cfg.api + '/api/escala?d=' + dmy + (fresh ? '&fresh=1' : ''), { headers: { 'X-PIN': cfg.pin } }).then(function (r) {
-        if (r.status === 401) { if (cfg.onAuthFail) cfg.onAuthFail(); throw new Error('PIN inválido'); }
+        if (r.status === 401) { if (cfg.onAuthFail) cfg.onAuthFail(); throw new Error('Código inválido'); }
         return r.json().then(function (j) {
           if (!r.ok) throw new Error(j.error || 'Erro ' + r.status);
           return j;
@@ -359,6 +359,7 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
       return '<option value="' + esc(x.g) + '"' + (x.g === cg ? ' selected' : '') + '>' + esc(x.g) + ' (' + x.n + ')</option>';
     }).join('');
     if (cg === '*') sel.value = '*';
+    sel.style.display = groups().length > 1 ? '' : 'none';
     var days = state.data.days;
     document.getElementById('range').textContent = days.length ? fmtDay(days[0]) + ' – ' + fmtDay(days[days.length - 1]) : '';
     var ps = visiblePeople();
