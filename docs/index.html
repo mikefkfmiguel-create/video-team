@@ -22,7 +22,7 @@
   h1 { margin: 18px 0 4px; font-size: 24px; letter-spacing: .04em; font-weight: 700; }
   h1 span { font-weight: 300; opacity: .72; }
   p { margin: 0 0 20px; color: var(--mut); font-size: 13px; }
-  input[type=text], input[type=password] { width: 100%; height: 48px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font: inherit; font-size: 17px; text-align: center; padding: 0 12px; }
+  input[type=text], input[type=email], input[type=password] { width: 100%; height: 48px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font: inherit; font-size: 17px; text-align: center; padding: 0 12px; }
   input[type=password] { font-size: 22px; letter-spacing: .15em; }
   input:focus { outline: 2px solid var(--acc); outline-offset: 1px; }
   button { width: 100%; height: 44px; margin-top: 12px; border: 0; border-radius: 10px; background: linear-gradient(135deg, var(--acc2), var(--acc)); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
@@ -93,23 +93,23 @@
   function showRequestForm(msg) {
     wrap.innerHTML =
       '<div class="card">' + SYM + '<h1>VIDEO<span> TEAM</span></h1>' +
-      '<p>' + (msg || 'Escala da equipa. Pede acesso e aguarda aprovação.') + '</p>' +
-      '<form id="f"><input id="nm" type="text" autocomplete="name" placeholder="O teu nome" maxlength="60" required>' +
+      '<p>' + (msg || 'Escala da equipa. Pede acesso com o teu email e aguarda aprovação.') + '</p>' +
+      '<form id="f"><input id="em" type="email" inputmode="email" autocomplete="email" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="o.teu@email.com" maxlength="120" required>' +
       '<button id="go">Pedir acesso</button></form>' +
       '<div class="err" id="err"></div>' +
       '<button class="ghost" id="adm">Sou admin</button>' +
       '<div class="by"><b>MIKE</b> APPS</div></div>';
-    document.getElementById('nm').focus();
+    document.getElementById('em').focus();
     document.getElementById('f').onsubmit = function (e) {
       e.preventDefault();
-      var name = document.getElementById('nm').value.trim();
+      var email = document.getElementById('em').value.trim();
       var go = document.getElementById('go'), err = document.getElementById('err');
       go.disabled = true; err.textContent = '';
-      fetch(API + '/api/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name }) })
+      fetch(API + '/api/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email }) })
         .then(function (r) { return r.json(); })
         .then(function (j) {
-          if (!j.token) { err.textContent = j.error || 'Não consegui enviar o pedido.'; go.disabled = false; return; }
-          set('vt.reqtoken', j.token); set('vt.reqname', name);
+          if (!j.token) { err.textContent = j.error === 'email invalido' ? 'Email inválido.' : (j.error || 'Não consegui enviar o pedido.'); go.disabled = false; return; }
+          set('vt.reqtoken', j.token); set('vt.reqname', j.name);
           showPending();
         })
         .catch(function () { err.textContent = 'Sem ligação ao servidor.'; go.disabled = false; });
@@ -202,7 +202,7 @@
       html += section('A aguardar aprovação', groups.pending, function (it) {
         return actBtn(it.token, 'deny', 'no', 'Recusar') + actBtn(it.token, 'approve', 'adm', 'Admin') + actBtn(it.token, 'approve', '', 'Aprovar');
       }, 'Ninguém à espera.');
-      html += section('Com acesso', groups.approved, function (it) {
+      html += section('Com acesso · expira 12h depois de aprovar', groups.approved, function (it) {
         return (it.role === 'admin' ? '<span class="badge">admin</span>' : '') + actBtn(it.token, 'revoke', 'no', 'Revogar');
       }, 'Ainda ninguém.');
       document.getElementById('lists').innerHTML = html;
@@ -226,7 +226,7 @@
     var h = '<div class="grp"><h2>' + title + ' (' + items.length + ')</h2>';
     if (!items.length) return h + '<p class="empty2">' + emptyMsg + '</p></div>';
     items.forEach(function (it) {
-      h += '<div class="row"><div class="who"><b>' + esc(it.name) + '</b><small>' + when(it.requestedAt) + '</small></div><div class="acts">' + actions(it) + '</div></div>';
+      h += '<div class="row"><div class="who"><b>' + esc(it.name) + '</b><small>' + esc(it.email || '') + ' · ' + when(it.requestedAt) + '</small></div><div class="acts">' + actions(it) + '</div></div>';
     });
     return h + '</div>';
   }

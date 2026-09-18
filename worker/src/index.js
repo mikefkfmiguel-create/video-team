@@ -2,7 +2,8 @@
 // Faz login com as credenciais guardadas como segredos, le a escala e devolve JSON.
 // So LE dados.
 // Segredos: VT_USER, VT_PASSWORD (login no 7Eventos), VT_PIN_ADMIN (a tua chave de admin).
-// O acesso da equipa (e de outros admins) e por pedido + aprovacao — ver secao "pedidos de acesso".
+// O acesso da equipa (e de outros admins) e por pedido (com email) + aprovacao — ver
+// secao "pedidos de acesso". Aprovado, expira sozinho ao fim de ACCESS_TTL.
 // Variavel: ALLOWED_ORIGINS.
 import { parseEscala } from './parse.js';
 
@@ -140,31 +141,39 @@ function randomToken() {
   return [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
 }
 
-function normName(s) {
-  return String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// deriva um nome de apresentacao a partir do email (joao.silva@x.pt -> "Joao Silva").
+// e so para o painel de admin reconhecer quem e; nao e dado autoritativo.
+function nameFromEmail(email) {
+  const local = String(email).split('@')[0];
+  const words = local.split(/[._-]+/).filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1));
+  return words.join(' ') || local;
 }
 
 // ---------- pedidos de acesso ----------
-// Cada pedido fica em req:<token> = {name, status, requestedAt, approvedAt?, role?}
+// Cada pedido fica em req:<token> = {email, name, status, requestedAt, approvedAt?, role?}
 // status: pending | approved | denied | revoked. role (quando aprovado): 'video' | 'admin'.
+// Aprovado expira sozinho ao fim de ACCESS_TTL (o KV apaga a chave) — tem de se pedir outra vez.
 // O token so e conhecido por quem pediu (guardado no telemovel dele) e por ti (painel de admin).
+const ACCESS_TTL = 12 * 3600; // 12 horas
 
 async function handleRequest(req, env, h) {
   const body = await readJson(req);
-  const name = String((body && body.name) || '').trim().slice(0, 60);
-  if (name.length < 2) return json({ error: 'nome invalido' }, 400, h);
-  const norm = normName(name);
-  const prevToken = await env.FOTOS.get(`byname:${norm}`);
+  const email = String((body && body.email) || '').trim().toLowerCase().slice(0, 120);
+  if (!EMAIL_RE.test(email)) return json({ error: 'email invalido' }, 400, h);
+  const prevToken = await env.FOTOS.get(`byemail:${email}`);
   if (prevToken) {
     const prev = await env.FOTOS.get(`req:${prevToken}`, 'json');
-    // um pedido ja pendente com o mesmo nome nao cria outro — devolve o mesmo
-    if (prev && prev.status === 'pending') return json({ token: prevToken, status: 'pending' }, 200, h);
+    // um pedido ja pendente com o mesmo email nao cria outro — devolve o mesmo
+    if (prev && prev.status === 'pending') return json({ token: prevToken, status: 'pending', name: prev.name }, 200, h);
   }
   const token = randomToken();
-  const entry = { name, status: 'pending', requestedAt: Date.now() };
+  const name = nameFromEmail(email);
+  const entry = { email, name, status: 'pending', requestedAt: Date.now() };
   await env.FOTOS.put(`req:${token}`, JSON.stringify(entry));
-  await env.FOTOS.put(`byname:${norm}`, token);
-  return json({ token, status: 'pending' }, 200, h);
+  await env.FOTOS.put(`byemail:${email}`, token);
+  return json({ token, status: 'pending', name }, 200, h);
 }
 
 async function handleStatus(req, env, h) {
@@ -197,10 +206,13 @@ async function handleAdmin(url, req, env, h) {
       entry.status = 'approved';
       entry.role = body && body.role === 'admin' ? 'admin' : 'video';
       entry.approvedAt = Date.now();
+      entry.expiresAt = entry.approvedAt + ACCESS_TTL * 1000;
+      // o KV apaga a chave sozinho ao fim do prazo — o acesso expira sem eu ter de verificar nada
+      await env.FOTOS.put(`req:${token}`, JSON.stringify(entry), { expirationTtl: ACCESS_TTL });
     } else {
       entry.status = m[1] === 'deny' ? 'denied' : 'revoked';
+      await env.FOTOS.put(`req:${token}`, JSON.stringify(entry));
     }
-    await env.FOTOS.put(`req:${token}`, JSON.stringify(entry));
     return json({ ok: true, status: entry.status, role: entry.role }, 200, h);
   }
   return json({ error: 'nada aqui' }, 404, h);

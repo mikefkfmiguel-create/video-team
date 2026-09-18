@@ -25,6 +25,8 @@
   function recall(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 
   var TODAY = keyOf(new Date());
+  // utilizador normal (equipa) so ve quem tem marcacao, sem poder desligar isso
+  var forceOnly = cfg.role === 'video';
   var state = {
     anchor: new Date(),
     data: null,
@@ -32,7 +34,7 @@
     view: recall('vt.view') || (innerWidth < 760 ? 'dia' : 'grelha'),
     day: TODAY,
     q: '',
-    onlyBooked: recall('vt.only') !== '0',
+    onlyBooked: forceOnly ? true : recall('vt.only') !== '0',
     loading: false,
     error: null,
     fetchedAt: null
@@ -521,7 +523,7 @@
     '<div class="top"><div class="brand"><h1>VIDEO<span> TEAM</span></h1><span id="range"></span></div>' +
     '<div class="ctl"><button class="btn" id="prev" title="Semana anterior">‹</button><button class="btn" id="today">Hoje</button><button class="btn" id="next" title="Semana seguinte">›</button></div>' +
     '<div class="ctl"><div class="seg"><button data-view="grelha">Grelha</button><button data-view="dia">Dia</button></div>' +
-    '<label class="tog"><input type="checkbox" id="only"> só com marcação</label><select id="group"></select><input type="search" id="q" placeholder="Procurar…">' +
+    (forceOnly ? '' : '<label class="tog"><input type="checkbox" id="only"> só com marcação</label>') + '<select id="group"></select><input type="search" id="q" placeholder="Procurar…">' +
     '<button class="btn" id="reload" title="Atualizar">⟳</button><span id="status"></span>' +
     (cfg.onRequests ? '<button class="btn" id="requests" title="Pedidos de acesso">Pedidos</button>' : '') +
     (cfg.onLogout ? '<button class="btn" id="logout" title="Sair / mudar código">Sair</button>' : '') + '</div>' +
@@ -537,8 +539,10 @@
   document.getElementById('next').onclick = function () { shift(7); };
   document.getElementById('today').onclick = function () { state.day = TODAY; shift(0); };
   var only = document.getElementById('only');
-  only.checked = state.onlyBooked;
-  only.onchange = function () { state.onlyBooked = only.checked; store('vt.only', only.checked ? '1' : '0'); paint(false); };
+  if (only) {
+    only.checked = state.onlyBooked;
+    only.onchange = function () { state.onlyBooked = only.checked; store('vt.only', only.checked ? '1' : '0'); paint(false); };
+  }
   if (cfg.onRequests) document.getElementById('requests').onclick = function () { cfg.onRequests(); };
   if (cfg.onLogout) document.getElementById('logout').onclick = function () { cfg.onLogout(); };
   document.getElementById('reload').onclick = function () { load(true); };
