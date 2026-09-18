@@ -256,9 +256,10 @@
     if (!order.length && !Object.keys(absent).length) h += '<p class="empty">Ninguém marcado neste dia.</p>';
     order.forEach(function (s) {
       var ev = events[s], e = ev.e;
-      h += '<article class="card" style="--h:' + hue(e.code) + '"><header><div><h3>' + esc(e.event || 'OS ' + e.code) + '</h3>' +
+      var f = ev.ps[0];
+      h += '<article class="card" style="--h:' + hue(e.code) + '"><header class="tap" data-person="' + esc(f.p.id) + '" data-day="' + k + '" data-i="' + f.j + '"><div><h3>' + esc(e.event || 'OS ' + e.code) + '</h3>' +
         '<p>OS ' + esc(e.osFull) + (e.client ? ' · ' + esc(e.client) : '') + '</p></div>' +
-        (e.hor ? '<span class="hor">' + esc(e.hor) + '</span>' : '') + '</header><div class="crew">';
+        '<div class="hr">' + (e.hor ? '<span class="hor">' + esc(e.hor) + '</span>' : '') + pdfPill(e) + '</div></header><div class="crew">';
       ev.ps.forEach(function (x) {
         h += '<button class="mate" data-person="' + esc(x.p.id) + '">' + avatar(x.p, 28) + '<span>' + esc(x.p.name) + '</span></button>';
       });
@@ -312,9 +313,9 @@
             h += '<div class="run' + (now ? ' now' : '') + '"><span class="rw">' + (j ? '' : esc(when)) + '</span><span><span class="chip inc inc-' + esc(e.code) + '"><b>' + esc(e.code) + '</b></span> <span class="mut">' + esc(e.label) + (n > 1 ? ' · ' + n + ' dias' : '') + '</span></span></div>';
             return;
           }
-          h += '<button class="run os' + (now ? ' now' : '') + '" style="--h:' + hue(e.code) + '" data-person="' + esc(p.id) + '" data-day="' + run.from + '" data-i="' + j + '">' +
+          h += '<div class="run os tap' + (now ? ' now' : '') + '" style="--h:' + hue(e.code) + '" data-person="' + esc(p.id) + '" data-day="' + run.from + '" data-i="' + j + '">' +
             '<span class="rw">' + (j ? '' : esc(when)) + '</span><span class="rb"><b>' + esc(e.event || 'OS ' + e.code) + '</b>' +
-            '<small>OS ' + esc(e.osFull) + (e.client ? ' · ' + esc(e.client) : '') + (e.hor ? ' · ' + esc(e.hor) : '') + (n > 1 ? ' · ' + n + ' dias' : '') + '</small></span></button>';
+            '<small>OS ' + esc(e.osFull) + (e.client ? ' · ' + esc(e.client) : '') + (e.hor ? ' · ' + esc(e.hor) : '') + (n > 1 ? ' · ' + n + ' dias' : '') + '</small></span>' + pdfPill(e) + '</div>';
         });
       });
       h += '</section>';
@@ -372,6 +373,11 @@
     return u ? '<a class="pdf" href="' + esc(u) + '" target="_blank" rel="noopener"><span>PDF</span>Proposta técnica</a>' : '';
   }
 
+  function pdfPill(e) {
+    var u = pdfUrl(e);
+    return u ? '<a class="pdfs" href="' + esc(u) + '" target="_blank" rel="noopener" title="Proposta técnica (PDF)">PDF</a>' : '';
+  }
+
   function ranges(days) {
     var out = [], start = days[0], prev = days[0];
     for (var i = 1; i <= days.length; i++) {
@@ -390,7 +396,7 @@
       h += '<li class="' + dayCls(k) + '"><span class="ad">' + esc(fmtDay(k, true)) + '</span><span class="ae">' +
         (list.length ? list.map(function (e) {
           return e.kind === 'inc' ? '<span class="chip inc inc-' + esc(e.code) + '"><b>' + esc(e.code) + '</b></span> <span class="mut">' + esc(e.label) + '</span>'
-            : '<span class="dot" style="--h:' + hue(e.code) + '"></span><b>' + esc(e.event || e.code) + '</b> <span class="mut">' + esc(e.code) + (e.hor ? ' · ' + esc(e.hor) : '') + '</span>';
+            : '<span class="dot" style="--h:' + hue(e.code) + '"></span><b>' + esc(e.event || e.code) + '</b> <span class="mut">' + esc(e.code) + (e.hor ? ' · ' + esc(e.hor) : '') + '</span> ' + pdfPill(e);
         }).join('<br>') : '<span class="mut">—</span>') + '</span></li>';
     });
     openSheet(h + '</ul>');
@@ -479,7 +485,7 @@
     '.dayv{max-width:880px;margin:0 auto;padding:16px}.dayv h2{margin:4px 0 14px;font-size:20px;text-transform:capitalize}.dayv h2 em{font-style:normal;font-size:12px;background:linear-gradient(135deg,#1246E6,var(--acc));color:#fff;border-radius:999px;padding:2px 8px;vertical-align:middle;text-transform:none}',
     '.card{background:var(--panel);border-radius:12px;box-shadow:var(--shadow);margin-bottom:10px;overflow:hidden;border-left:4px solid hsl(var(--h) 60% 50%)}',
     '.card header{display:flex;justify-content:space-between;gap:10px;padding:12px 14px 6px}.card h3{margin:0;font-size:16px}.card p{margin:2px 0 0;color:var(--mut);font-size:12px}',
-    '.hor{flex:none;font-size:12px;font-variant-numeric:tabular-nums;background:var(--soft);border-radius:6px;padding:3px 8px;height:fit-content}',
+    '.hor{flex:none;white-space:nowrap;font-size:12px;font-variant-numeric:tabular-nums;background:var(--soft);border-radius:6px;padding:3px 8px;height:fit-content}',
     '.crew{display:flex;flex-wrap:wrap;gap:6px;padding:6px 14px 14px}.mate{display:inline-flex;align-items:center;gap:7px;padding:3px 10px 3px 3px;border-radius:999px;background:var(--soft)}.mate:hover{background:var(--line)}.mate.sm{font-size:12px;padding-right:8px}',
     '.minor{margin-top:18px}.minor h4{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}.minor .row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px}.lbl{color:var(--mut);font-size:12px;min-width:90px}.names{display:flex;flex-wrap:wrap;gap:6px}',
     '.empty{color:var(--mut);text-align:center;padding:40px 16px}.loading{display:grid;place-items:center;padding:80px 0;color:var(--mut)}',
@@ -490,6 +496,7 @@
     '.sh-h{border-left:4px solid hsl(var(--h) 60% 50%);padding-left:12px;margin-right:40px}.sh-h h3,.sh-p h3{margin:0;font-size:19px}.sh-h p,.sh-p p{margin:3px 0 0;color:var(--mut)}',
     'dl{margin:16px 0 0}dt{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin-top:12px}dd{margin:3px 0 0}',
     '.pdf{display:flex;align-items:center;gap:10px;margin:16px 0 4px;padding:11px 14px;border-radius:10px;background:linear-gradient(135deg,#1246E6,var(--acc));color:#fff;text-decoration:none;font-weight:600}.pdf span{font-size:10px;letter-spacing:.08em;background:rgba(255,255,255,.2);border-radius:5px;padding:3px 6px}.pdf:active{opacity:.85}',
+    '.pdfs{flex:none;display:inline-flex;align-items:center;font-size:10px;font-weight:700;letter-spacing:.08em;color:#fff;background:linear-gradient(135deg,#1246E6,var(--acc));border-radius:6px;padding:4px 8px;text-decoration:none;margin-left:auto}.hr{display:flex;flex-direction:column;align-items:flex-end;gap:6px}.tap{cursor:pointer}.run.os .pdfs{align-self:center}',
     '.crewlist{list-style:none;padding:0;margin:8px 0 0}.crewlist li{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}.crewlist div{display:flex;flex-direction:column}.crewlist small{color:var(--mut);font-size:12px}',
     '.sh-p{display:flex;gap:14px;align-items:center;margin-right:40px}.mut{color:var(--mut)}',
     '.agenda{list-style:none;padding:0;margin:16px 0 0}.agenda li{display:flex;gap:12px;padding:8px 6px;border-bottom:1px solid var(--line);font-size:13px}.agenda li.we,.agenda li.sp{background:var(--sp)}.agenda li.today{box-shadow:inset 3px 0 0 var(--acc)}',
@@ -533,6 +540,7 @@
     b.onclick = function () { state.view = b.dataset.view; store('vt.view', state.view); paint(true); };
   });
   document.getElementById('main').addEventListener('click', function (ev) {
+    if (ev.target.closest('a.pdfs, a.pdf')) return;
     var t = ev.target.closest('[data-pick],[data-i],[data-person]');
     if (!t) return;
     if (t.dataset.pick) { state.day = t.dataset.pick; paint(false); return; }
