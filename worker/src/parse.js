@@ -32,8 +32,10 @@ function entry(title, inner) {
     code = parts.shift() || '';
     event = parts.join(' ');
   }
+  const pm = a && a[0].match(/value=(\d+)/);
   return {
     kind: 'os',
+    prop: pm ? pm[1] : null,
     code,
     osFull: lines[0] || code,
     event,

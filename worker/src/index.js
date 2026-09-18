@@ -182,6 +182,33 @@ export default {
         return new Response(img.body, { headers: { ...h, 'Content-Type': img.headers.get('Content-Type'), 'Cache-Control': 'private, max-age=86400' } });
       }
 
+      // /pdf/70733?d=dd-mm-yyyy  -> proposta tecnica (PDF) de um trabalho
+      const pm = url.pathname.match(/^\/pdf\/(\d+)$/);
+      if (pm) {
+        const id = pm[1];
+        if (role !== 'admin') {
+          // a equipa so abre propostas de trabalhos que aparecem na escala dela
+          const d = url.searchParams.get('d') || todayDMY();
+          if (!/^\d{2}-\d{2}-\d{4}$/.test(d)) return json({ error: 'data' }, 400, h);
+          const hit = await caches.default.match(escalaKey(d));
+          const data = forRole(hit ? await hit.json() : await fetchEscala(env, d), role);
+          const ok = data.people.some((p) => Object.values(p.cells).some((l) => l.some((e) => e.prop === id)));
+          if (!ok) return json({ error: 'sem acesso a esta proposta' }, 403, h);
+        }
+        const key = new Request(`https://cache.videoteam/pdf/${id}`);
+        let pdf = await caches.default.match(key);
+        if (!pdf) {
+          const res = await authed(env, `/mapas/ImprimirStream?model=Propostas&map=P05_PropostaTecnica&column=Propostas.Id&value=${id}`);
+          if (!res.ok || !/pdf/i.test(res.headers.get('Content-Type') || '')) return json({ error: 'O 7Eventos nao devolveu o PDF' }, 502, h);
+          pdf = new Response(await res.arrayBuffer(), { headers: { 'Content-Type': 'application/pdf', 'Cache-Control': 'max-age=600' } });
+          ctx.waitUntil(caches.default.put(key, pdf.clone()));
+        }
+        const name = (url.searchParams.get('n') || `proposta-${id}`).replace(/[^\w.-]+/g, '_');
+        return new Response(pdf.body, {
+          headers: { ...h, 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${name}.pdf"`, 'Cache-Control': 'private, max-age=600' },
+        });
+      }
+
       if (url.pathname === '/api/ping') return json({ ok: true, role }, 200, h);
       if (url.pathname === '/api/fotos') {
         // lista de ids de fotos (para o thumbs.py)

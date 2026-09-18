@@ -54,8 +54,9 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
     var ev, os;
     if (a) { ev = a.textContent.trim(); os = bText.replace(a.textContent, '').trim(); }
     else { var parts = bText.trim().split(/\s+/); os = parts.shift() || ''; ev = parts.join(' '); }
+    var pm = a && (a.getAttribute('href') || '').match(/value=(\d+)/);
     return {
-      kind: 'os', code: os, osFull: title[0] || os, event: ev,
+      kind: 'os', prop: pm ? pm[1] : null, code: os, osFull: title[0] || os, event: ev,
       client: title[1] && !/^Hor/i.test(title[1]) ? title[1] : '', hor: hor
     };
   }
@@ -123,8 +124,10 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
   function load(fresh) {
     var d = state.anchor;
     state.loading = true; state.error = null; paintStatus();
-    return fetchData(pad(d.getDate()) + '-' + pad(d.getMonth() + 1) + '-' + d.getFullYear(), fresh).then(function (data) {
+    var dmy = pad(d.getDate()) + '-' + pad(d.getMonth() + 1) + '-' + d.getFullYear();
+    return fetchData(dmy, fresh).then(function (data) {
       state.data = data;
+      state.dmy = dmy;
       state.fetchedAt = new Date(data.at || Date.now());
       if (keyOf(state.anchor) === TODAY) store('vt.cache', JSON.stringify({ at: +state.fetchedAt, data: state.data }));
       if (state.data.days.indexOf(state.day) < 0) state.day = state.data.days.indexOf(TODAY) >= 0 ? TODAY : state.data.days[0];
@@ -349,11 +352,25 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
     var h = '<div class="sh-h" style="--h:' + hue(e.code) + '"><h3>' + esc(e.event || 'OS ' + e.code) + '</h3><p>OS ' + esc(e.osFull) + '</p></div><dl>' +
       (e.client ? '<dt>Cliente / local</dt><dd>' + esc(e.client) + '</dd>' : '') +
       (e.hor ? '<dt>Horário</dt><dd>' + esc(e.hor) + '</dd>' : '') +
-      '<dt>Equipa neste período</dt></dl><ul class="crewlist">';
+      '</dl>' + pdfButton(e) + '<dl><dt>Equipa neste período</dt></dl><ul class="crewlist">';
     list.forEach(function (c) {
       h += '<li>' + avatar(c.p, 30) + '<div><b>' + esc(c.p.name) + '</b><small>' + esc(c.p.grupo) + ' · ' + esc(ranges(c.days)) + '</small></div></li>';
     });
     openSheet(h + '</ul>');
+  }
+
+  function pdfUrl(e) {
+    if (!e.prop) return null;
+    if (cfg.api) {
+      return cfg.api + '/pdf/' + e.prop + '?k=' + encodeURIComponent(cfg.pin) + '&d=' + (state.dmy || '') +
+        '&n=' + encodeURIComponent('OS-' + e.code + '-' + (e.event || ''));
+    }
+    return null; // nas apps nativas o PDF abriria fora da sessao; so na versao web
+  }
+
+  function pdfButton(e) {
+    var u = pdfUrl(e);
+    return u ? '<a class="pdf" href="' + esc(u) + '" target="_blank" rel="noopener"><span>PDF</span>Proposta técnica</a>' : '';
   }
 
   function ranges(days) {
@@ -473,6 +490,7 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
     '#sheet .x{position:absolute;top:10px;right:10px;z-index:1;width:32px;height:32px;border-radius:50%;background:var(--soft);font-size:18px}#sheet .sb{flex:1;min-height:0;overflow:auto;padding:20px}',
     '.sh-h{border-left:4px solid hsl(var(--h) 60% 50%);padding-left:12px;margin-right:40px}.sh-h h3,.sh-p h3{margin:0;font-size:19px}.sh-h p,.sh-p p{margin:3px 0 0;color:var(--mut)}',
     'dl{margin:16px 0 0}dt{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin-top:12px}dd{margin:3px 0 0}',
+    '.pdf{display:flex;align-items:center;gap:10px;margin:16px 0 4px;padding:11px 14px;border-radius:10px;background:linear-gradient(135deg,#1246E6,var(--acc));color:#fff;text-decoration:none;font-weight:600}.pdf span{font-size:10px;letter-spacing:.08em;background:rgba(255,255,255,.2);border-radius:5px;padding:3px 6px}.pdf:active{opacity:.85}',
     '.crewlist{list-style:none;padding:0;margin:8px 0 0}.crewlist li{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}.crewlist div{display:flex;flex-direction:column}.crewlist small{color:var(--mut);font-size:12px}',
     '.sh-p{display:flex;gap:14px;align-items:center;margin-right:40px}.mut{color:var(--mut)}',
     '.agenda{list-style:none;padding:0;margin:16px 0 0}.agenda li{display:flex;gap:12px;padding:8px 6px;border-bottom:1px solid var(--line);font-size:13px}.agenda li.we,.agenda li.sp{background:var(--sp)}.agenda li.today{box-shadow:inset 3px 0 0 var(--acc)}',
