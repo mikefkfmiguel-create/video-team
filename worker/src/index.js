@@ -98,6 +98,14 @@ function cors(req, env) {
   };
 }
 
+// o link do PDF abre numa aba nova: um erro tem de ser uma pagina legivel, nao JSON
+function pdfError(headers) {
+  const html = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PDF indisponível</title><body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#0C1020;color:#e8ecf5;font:15px system-ui,sans-serif;text-align:center;padding:24px">
+<div><h2 style="margin:0 0 8px">PDF indisponível</h2><p style="color:#8f9ab0;max-width:340px">O 7Eventos não conseguiu gerar esta proposta técnica (erro do próprio 7Eventos). Tenta mais tarde ou abre-a no 7Eventos.</p></div></body>`;
+  return new Response(html, { status: 502, headers: { ...headers, 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
+}
+
 function json(data, status, headers) {
   return new Response(JSON.stringify(data), {
     status,
@@ -199,7 +207,7 @@ export default {
         let pdf = await caches.default.match(key);
         if (!pdf) {
           const res = await authed(env, `/mapas/ImprimirStream?model=Propostas&map=P05_PropostaTecnica&column=Propostas.Id&value=${id}`);
-          if (!res.ok || !/pdf/i.test(res.headers.get('Content-Type') || '')) return json({ error: 'O 7Eventos nao devolveu o PDF' }, 502, h);
+          if (!res.ok || !/pdf/i.test(res.headers.get('Content-Type') || '')) return pdfError(h);
           pdf = new Response(await res.arrayBuffer(), { headers: { 'Content-Type': 'application/pdf', 'Cache-Control': 'max-age=600' } });
           ctx.waitUntil(caches.default.put(key, pdf.clone()));
         }
