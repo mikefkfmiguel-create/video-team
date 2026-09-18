@@ -5,8 +5,10 @@
 import { parseEscala } from './parse.js';
 
 const BASE = 'http://7eventos.avk.pt/7Eventos';
-const FRESH = 5 * 60 * 1000; // depois disto, responde com a copia e atualiza por tras
-const KEEP = 24 * 3600; // quanto tempo a copia fica guardada (s)
+// A escala so e lida do 7Eventos pelo cron (poucas vezes ao dia), pela primeira pessoa
+// que pede uma semana que ainda nao existe, ou pelo botao atualizar (no maximo 1x/10 min).
+const MIN_REFRESH = 10 * 60 * 1000;
+const KEEP = 2 * 24 * 3600; // copia no KV (s)
 
 // cookies da sessao 7Eventos, vivem enquanto o isolate estiver quente
 let jar = {};
@@ -56,11 +58,14 @@ async function fetchEscala(env, d) {
   if (!res.ok) throw new Error(`7Eventos respondeu ${res.status}`);
   const data = parseEscala(await res.text());
   data.at = Date.now();
-  await caches.default.put(escalaKey(d), new Response(JSON.stringify(data), { headers: { 'Cache-Control': `max-age=${KEEP}` } }));
+  // KV e global: a copia que o cron guarda e a mesma que toda a gente le
+  await env.FOTOS.put(`escala:${d}`, JSON.stringify(data), { expirationTtl: KEEP });
   return data;
 }
 
-const escalaKey = (d) => new Request(`https://cache.videoteam/escala/${d}`);
+async function getEscala(env, d) {
+  return (await env.FOTOS.get(`escala:${d}`, 'json')) || fetchEscala(env, d);
+}
 
 function todayDMY() {
   const p = new Intl.DateTimeFormat('pt-PT', { timeZone: 'Europe/Lisbon', day: '2-digit', month: '2-digit', year: 'numeric' }).formatToParts(new Date());
@@ -157,15 +162,11 @@ export default {
       if (url.pathname === '/api/escala') {
         const d = url.searchParams.get('d') || '';
         if (!/^\d{2}-\d{2}-\d{4}$/.test(d)) return json({ error: 'data' }, 400, h);
-        if (url.searchParams.get('fresh') !== '1') {
-          const hit = await caches.default.match(escalaKey(d));
-          if (hit) {
-            const data = await hit.json();
-            if (Date.now() - data.at > FRESH) ctx.waitUntil(fetchEscala(env, d).catch(() => {}));
-            return json(forRole(data, role), 200, h);
-          }
-        }
-        return json(forRole(await fetchEscala(env, d), role), 200, h);
+        let data = await getEscala(env, d);
+        if (url.searchParams.get('fresh') === '1' && Date.now() - data.at > MIN_REFRESH) data = await fetchEscala(env, d);
+        // a app diz que versao ja tem; se for a mesma nao se reenvia nada
+        if (url.searchParams.get('v') === String(data.at)) return json({ same: true, at: data.at }, 200, h);
+        return json(forRole(data, role), 200, h);
       }
 
       // /foto/203  -> foto do tecnico
@@ -198,8 +199,7 @@ export default {
           // a equipa so abre propostas de trabalhos que aparecem na escala dela
           const d = url.searchParams.get('d') || todayDMY();
           if (!/^\d{2}-\d{2}-\d{4}$/.test(d)) return json({ error: 'data' }, 400, h);
-          const hit = await caches.default.match(escalaKey(d));
-          const data = forRole(hit ? await hit.json() : await fetchEscala(env, d), role);
+          const data = forRole(await getEscala(env, d), role);
           const ok = data.people.some((p) => Object.values(p.cells).some((l) => l.some((e) => e.prop === id)));
           if (!ok) return json({ error: 'sem acesso a esta proposta' }, 403, h);
         }
@@ -220,8 +220,7 @@ export default {
       if (url.pathname === '/api/ping') return json({ ok: true, role }, 200, h);
       if (url.pathname === '/api/fotos') {
         // lista de ids de fotos (para o thumbs.py)
-        const hit = await caches.default.match(escalaKey(todayDMY()));
-        const data = hit ? await hit.json() : await fetchEscala(env, todayDMY());
+        const data = await getEscala(env, todayDMY());
         return json([...new Set(data.people.map((p) => p.foto).filter(Boolean))], 200, h);
       }
       return json({ error: 'nada aqui' }, 404, h);

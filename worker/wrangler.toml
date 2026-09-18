@@ -9,8 +9,8 @@ ALLOWED_ORIGINS = "https://mikefkfmiguel-create.github.io,http://localhost:8787,
 # Correr ./set-secrets.ps1 uma vez.
 
 [triggers]
-# a cada 15 min entre as 06h e as 23h (UTC)
-crons = ["*/15 6-23 * * *"]
+# 4x por dia (UTC): 7h, 12h, 17h, 20h em Lisboa no verao (6h, 11h, 16h, 19h no inverno)
+crons = ["0 6,11,16,19 * * *"]
 
 [[kv_namespaces]]
 binding = "FOTOS"

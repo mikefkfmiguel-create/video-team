@@ -100,7 +100,9 @@
 
   function fetchData(dmy, fresh) {
     if (cfg.api) {
-      return fetch(cfg.api + '/api/escala?d=' + dmy + (fresh ? '&fresh=1' : ''), { headers: { 'X-PIN': cfg.pin } }).then(function (r) {
+      // se ja temos esta semana, manda a versao: o Worker so responde "igual" se nada mudou
+      var have = state.data && state.dmy === dmy && state.data.at ? '&v=' + state.data.at : '';
+      return fetch(cfg.api + '/api/escala?d=' + dmy + (fresh ? '&fresh=1' : '') + have, { headers: { 'X-PIN': cfg.pin } }).then(function (r) {
         if (r.status === 401) { if (cfg.onAuthFail) cfg.onAuthFail(); throw new Error('Código inválido'); }
         return r.json().then(function (j) {
           if (!r.ok) throw new Error(j.error || 'Erro ' + r.status);
@@ -120,11 +122,15 @@
     }).then(parse);
   }
 
-  function load(fresh) {
-    var d = state.anchor;
+  function dmyOf(d) { return pad(d.getDate()) + '-' + pad(d.getMonth() + 1) + '-' + d.getFullYear(); }
+
+  // quiet: atualizacao automatica — se nada mudou, nao redesenha (mantem scroll e dia)
+  function load(fresh, quiet) {
+    var d = state.anchor, unchanged = false;
     state.loading = true; state.error = null; paintStatus();
-    var dmy = pad(d.getDate()) + '-' + pad(d.getMonth() + 1) + '-' + d.getFullYear();
+    var dmy = dmyOf(d);
     return fetchData(dmy, fresh).then(function (data) {
+      if (data.same) { unchanged = true; data = state.data; }
       state.data = data;
       state.dmy = dmy;
       state.fetchedAt = new Date(data.at || Date.now());
@@ -134,7 +140,8 @@
       state.error = e.message || String(e);
     }).then(function () {
       state.loading = false;
-      paint(true);
+      if (unchanged || (quiet && state.error)) paintStatus();
+      else paint(!quiet);
     });
   }
 
@@ -555,10 +562,10 @@
   // cache para abrir logo, depois atualiza
   try {
     var c = JSON.parse(recall('vt.cache') || 'null');
-    if (c && c.data && Date.now() - c.at < 7 * 864e5) { state.data = c.data; state.fetchedAt = new Date(c.at); }
+    if (c && c.data && Date.now() - c.at < 7 * 864e5) { state.data = c.data; state.dmy = dmyOf(new Date()); state.fetchedAt = new Date(c.at); }
   } catch (e) {}
   paint(true);
   load();
-  setInterval(function () { if (!document.hidden && !state.loading && keyOf(state.anchor) === TODAY) load(); }, 10 * 60 * 1000);
+  setInterval(function () { if (!document.hidden && !state.loading && keyOf(state.anchor) === TODAY) load(false, true); }, 10 * 60 * 1000);
   return 'app-ok';
 })
