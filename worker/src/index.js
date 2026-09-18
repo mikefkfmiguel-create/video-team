@@ -1,0 +1,185 @@
+// Video Team — Worker que faz de ponte entre a pagina (GitHub Pages) e o 7Eventos.
+// Faz login com as credenciais guardadas como segredos, le a escala e devolve JSON.
+// So LE dados. Segredos: VT_USER, VT_PASSWORD, VT_PIN. Variavel: ALLOWED_ORIGINS.
+import { parseEscala } from './parse.js';
+
+const BASE = 'http://7eventos.avk.pt/7Eventos';
+const FRESH = 5 * 60 * 1000; // depois disto, responde com a copia e atualiza por tras
+const KEEP = 24 * 3600; // quanto tempo a copia fica guardada (s)
+
+// cookies da sessao 7Eventos, vivem enquanto o isolate estiver quente
+let jar = {};
+
+function cookieHeader() {
+  return Object.entries(jar).map(([k, v]) => `${k}=${v}`).join('; ');
+}
+
+function absorb(res) {
+  for (const c of res.headers.getSetCookie()) {
+    const [pair] = c.split(';');
+    const i = pair.indexOf('=');
+    jar[pair.slice(0, i).trim()] = pair.slice(i + 1).trim();
+  }
+}
+
+async function login(env) {
+  jar = {};
+  const page = await fetch(`${BASE}/Account/Login`, { redirect: 'manual' });
+  absorb(page);
+  const m = (await page.text()).match(/name="__RequestVerificationToken" type="hidden" value="([^"]+)"/);
+  if (!m) throw new Error('Pagina de login mudou');
+  const body = new URLSearchParams({
+    __RequestVerificationToken: m[1],
+    UserName: env.VT_USER,
+    Password: env.VT_PASSWORD,
+    RememberMe: 'true',
+  });
+  const res = await fetch(`${BASE}/Account/Login`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: cookieHeader() },
+    body,
+  });
+  absorb(res);
+  if (res.status !== 302 || /Account\/Login/i.test(res.headers.get('Location') || '')) {
+    throw new Error('Login no 7Eventos falhou');
+  }
+}
+
+async function fetchEscala(env, d) {
+  const res = await authed(env, '/EscalasTecnicos/VistaSemanal', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `txt_Periodo=${d}`,
+  });
+  if (!res.ok) throw new Error(`7Eventos respondeu ${res.status}`);
+  const data = parseEscala(await res.text());
+  data.at = Date.now();
+  await caches.default.put(escalaKey(d), new Response(JSON.stringify(data), { headers: { 'Cache-Control': `max-age=${KEEP}` } }));
+  return data;
+}
+
+const escalaKey = (d) => new Request(`https://cache.videoteam/escala/${d}`);
+
+function todayDMY() {
+  const p = new Intl.DateTimeFormat('pt-PT', { timeZone: 'Europe/Lisbon', day: '2-digit', month: '2-digit', year: 'numeric' }).formatToParts(new Date());
+  const g = (t) => p.find((x) => x.type === t).value;
+  return `${g('day')}-${g('month')}-${g('year')}`;
+}
+
+// GET/POST autenticado; se cair no login, entra e tenta outra vez
+async function authed(env, path, init = {}) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (!Object.keys(jar).length) await login(env);
+    const res = await fetch(BASE + path, {
+      ...init,
+      redirect: 'manual',
+      headers: { ...(init.headers || {}), Cookie: cookieHeader() },
+    });
+    if (res.status === 302 && /Account\/Login/i.test(res.headers.get('Location') || '')) {
+      jar = {};
+      continue;
+    }
+    return res;
+  }
+  throw new Error('Sessao 7Eventos recusada');
+}
+
+function cors(req, env) {
+  const origin = req.headers.get('Origin') || '';
+  const allowed = (env.ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
+  return {
+    'Access-Control-Allow-Origin': allowed.includes(origin) ? origin : allowed[0] || '*',
+    'Access-Control-Allow-Headers': 'X-PIN',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Max-Age': '86400',
+    Vary: 'Origin',
+  };
+}
+
+function json(data, status, headers) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers },
+  });
+}
+
+async function pinOk(pin, env) {
+  if (!env.VT_PIN || !pin) return false;
+  const enc = new TextEncoder();
+  const [a, b] = await Promise.all([
+    crypto.subtle.digest('SHA-256', enc.encode(pin)),
+    crypto.subtle.digest('SHA-256', enc.encode(env.VT_PIN)),
+  ]);
+  return crypto.subtle.timingSafeEqual(a, b);
+}
+
+export default {
+  // cron: mantem a escala de hoje quente para ninguem esperar pelo 7Eventos
+  async scheduled(_ev, env, ctx) {
+    ctx.waitUntil(fetchEscala(env, todayDMY()));
+  },
+
+  async fetch(req, env, ctx) {
+    const url = new URL(req.url);
+    const h = cors(req, env);
+    if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: h });
+    if (req.method !== 'GET') return json({ error: 'metodo' }, 405, h);
+
+    const pin = req.headers.get('X-PIN') || url.searchParams.get('k');
+    if (!(await pinOk(pin, env))) {
+      await new Promise((r) => setTimeout(r, 800)); // trava tentativas em serie
+      return json({ error: 'pin' }, 401, h);
+    }
+
+    try {
+      // /api/escala?d=dd-mm-yyyy
+      if (url.pathname === '/api/escala') {
+        const d = url.searchParams.get('d') || '';
+        if (!/^\d{2}-\d{2}-\d{4}$/.test(d)) return json({ error: 'data' }, 400, h);
+        if (url.searchParams.get('fresh') !== '1') {
+          const hit = await caches.default.match(escalaKey(d));
+          if (hit) {
+            const data = await hit.json();
+            if (Date.now() - data.at > FRESH) ctx.waitUntil(fetchEscala(env, d).catch(() => {}));
+            return json(data, 200, h);
+          }
+        }
+        return json(await fetchEscala(env, d), 200, h);
+      }
+
+      // /foto/203  -> foto do tecnico
+      const fm = url.pathname.match(/^\/foto\/(\d+)$/);
+      if (fm) {
+        // miniatura guardada no KV (gerada por thumbs.py); senao a original
+        const thumb = env.FOTOS && (await env.FOTOS.get(`t:${fm[1]}`, 'arrayBuffer'));
+        if (thumb && !url.searchParams.has('orig')) {
+          return new Response(thumb, { headers: { ...h, 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=604800' } });
+        }
+        const cache = caches.default;
+        const key = new Request(`https://cache.videoteam/foto/${fm[1]}`);
+        let img = await cache.match(key);
+        if (!img) {
+          const res = await authed(env, `/Images/FotosTecnicos/${fm[1]}.jpg`);
+          if (!res.ok) return new Response(null, { status: 404, headers: h });
+          img = new Response(res.body, {
+            headers: { 'Content-Type': res.headers.get('Content-Type') || 'image/jpeg', 'Cache-Control': 'max-age=86400' },
+          });
+          ctx.waitUntil(cache.put(key, img.clone()));
+        }
+        return new Response(img.body, { headers: { ...h, 'Content-Type': img.headers.get('Content-Type'), 'Cache-Control': 'private, max-age=86400' } });
+      }
+
+      if (url.pathname === '/api/ping') return json({ ok: true }, 200, h);
+      if (url.pathname === '/api/fotos') {
+        // lista de ids de fotos (para o thumbs.py)
+        const hit = await caches.default.match(escalaKey(todayDMY()));
+        const data = hit ? await hit.json() : await fetchEscala(env, todayDMY());
+        return json([...new Set(data.people.map((p) => p.foto).filter(Boolean))], 200, h);
+      }
+      return json({ error: 'nada aqui' }, 404, h);
+    } catch (e) {
+      return json({ error: e.message || String(e) }, 502, h);
+    }
+  },
+};

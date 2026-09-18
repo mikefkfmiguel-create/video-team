@@ -1,0 +1,40 @@
+{
+  "name": "video-team",
+  "productName": "Video Team",
+  "version": "1.0.0",
+  "description": "Atalho com login automatico para o 7Eventos",
+  "main": "main.js",
+  "author": "Mike",
+  "license": "UNLICENSED",
+  "scripts": {
+    "sync": "node -e \"for (const f of ['login.js','app.js']) require('fs').copyFileSync('../shared/'+f, f)\"",
+    "prestart": "npm run sync",
+    "start": "electron .",
+    "predist": "npm run sync",
+    "dist": "electron-builder --win portable"
+  },
+  "build": {
+    "appId": "com.mike.videoteam",
+    "productName": "Video Team",
+    "files": [
+      "main.js",
+      "login.js",
+      "app.js",
+      "package.json"
+    ],
+    "win": {
+      "target": "portable",
+      "signAndEditExecutable": false
+    },
+    "portable": {
+      "artifactName": "VideoTeam.exe"
+    },
+    "directories": {
+      "output": "dist"
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  }
+}

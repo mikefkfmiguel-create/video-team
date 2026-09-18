@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Video Team</title>
+<meta name="description" content="Escala da equipa de vídeo">
+<meta name="theme-color" content="#171A21">
+<meta name="robots" content="noindex">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/favicon.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<style>
+  :root { color-scheme: light dark; --bg: #f5f6f8; --panel: #fff; --ink: #16181d; --mut: #6b7280; --line: #e5e7eb; --acc: #c8102e; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0f1115; --panel: #171a21; --ink: #e8eaf0; --mut: #9aa1ad; --line: #262a33; --acc: #ff4d5e; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--ink); font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; display: grid; place-items: center; padding: 16px; }
+  form { width: min(340px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 28px 24px; text-align: center; }
+  img { width: 64px; height: 64px; border-radius: 16px; }
+  h1 { margin: 14px 0 4px; font-size: 22px; letter-spacing: -.01em; }
+  h1 i { color: var(--acc); font-style: normal; }
+  p { margin: 0 0 20px; color: var(--mut); font-size: 13px; }
+  input { width: 100%; height: 48px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font: inherit; font-size: 22px; text-align: center; letter-spacing: .3em; }
+  input:focus { outline: 2px solid var(--acc); outline-offset: 1px; }
+  button { width: 100%; height: 44px; margin-top: 12px; border: 0; border-radius: 10px; background: var(--acc); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: .6; }
+  .err { color: var(--acc); min-height: 20px; margin: 10px 0 0; font-size: 13px; }
+</style>
+</head>
+<body>
+<form id="f" hidden>
+  <img src="icons/icon-192.png" alt="">
+  <h1>Video<i>Team</i></h1>
+  <p>Escala da equipa. Mete o PIN que te deram.</p>
+  <input id="pin" type="password" inputmode="numeric" autocomplete="current-password" aria-label="PIN" required>
+  <button id="go">Entrar</button>
+  <div class="err" id="err"></div>
+</form>
+<script src="app.js"></script>
+<script>
+  // Worker do Cloudflare que vai buscar a escala ao 7Eventos
+  var API = 'https://video-team.avkvideoshare.workers.dev';
+  try { API = localStorage.getItem('vt.api') || API; } catch (e) {}
+
+  var HEAD = '<meta name="theme-color" content="#171A21"><link rel="manifest" href="manifest.json">' +
+    '<link rel="icon" href="icons/favicon.png"><link rel="apple-touch-icon" href="icons/apple-touch-icon.png">';
+
+  function getPin() { try { return localStorage.getItem('vt.pin'); } catch (e) { return null; } }
+  function setPin(v) { try { v ? localStorage.setItem('vt.pin', v) : localStorage.removeItem('vt.pin'); } catch (e) {} }
+
+  function start(pin) {
+    VideoTeam({ api: API, pin: pin, search: 'video', head: HEAD, onAuthFail: function () { setPin(null); location.reload(); } });
+  }
+
+  function ask() {
+    var f = document.getElementById('f'), err = document.getElementById('err'), go = document.getElementById('go');
+    f.hidden = false;
+    document.getElementById('pin').focus();
+    f.onsubmit = function (e) {
+      e.preventDefault();
+      var pin = document.getElementById('pin').value.trim();
+      go.disabled = true; err.textContent = '';
+      fetch(API + '/api/ping', { headers: { 'X-PIN': pin } }).then(function (r) {
+        if (r.ok) { setPin(pin); start(pin); return; }
+        err.textContent = r.status === 401 ? 'PIN errado.' : 'Erro ' + r.status + '.';
+      }).catch(function () {
+        err.textContent = 'Sem ligação ao servidor.';
+      }).then(function () { go.disabled = false; });
+    };
+  }
+
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
+  // so depois do parse acabar: o VideoTeam substitui o documento com document.open()
+  document.addEventListener('DOMContentLoaded', function () {
+    var saved = getPin();
+    if (saved) start(saved); else ask();
+  });
+</script>
+</body>
+</html>

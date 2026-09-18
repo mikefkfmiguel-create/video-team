@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- O 7Eventos so existe em http -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">7eventos.avk.pt</domain>
+    </domain-config>
+</network-security-config>

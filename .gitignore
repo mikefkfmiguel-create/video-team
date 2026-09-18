@@ -1,0 +1,17 @@
+# segredos — nunca no repo
+config.json
+secrets.properties
+.dev.vars
+local.properties
+
+# builds
+*.exe
+*.apk
+node_modules/
+dist/
+build/
+.gradle/
+.kotlin/
+.wrangler/
+desktop/login.js
+desktop/app.js
