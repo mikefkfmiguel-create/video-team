@@ -9,7 +9,7 @@ pin = sys.argv[1]
 api = sys.argv[2] if len(sys.argv) > 2 else API
 
 def get(path):
-    req = urllib.request.Request(api + path, headers={'X-PIN': pin})
+    req = urllib.request.Request(api + path, headers={'X-PIN': pin, 'User-Agent': 'VideoTeam-thumbs/1.0'})
     return urllib.request.urlopen(req, timeout=120).read()
 
 ids = json.loads(get('/api/fotos'))
