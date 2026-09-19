@@ -153,11 +153,18 @@ function nameFromEmail(email) {
 
 // ---------- pedidos de acesso ----------
 // Cada pedido fica em req:<token> = {email, name, status, requestedAt, approvedAt?, role?}
-// status: pending | approved | denied | revoked. role (quando aprovado): 'video' | 'admin'.
+// status: pending | approved | denied | revoked. role (quando aprovado): 'video' | 'admin' | 'fulladmin'.
 // Aprovado expira sozinho ao fim do prazo (o KV apaga a chave) — tem de se pedir outra vez.
 // O token so e conhecido por quem pediu (guardado no telemovel dele) e por ti (painel de admin).
+//
+// Niveis (cada um so gere quem esta abaixo dele):
+//   video     - so a escala do grupo Video.
+//   admin     - ve tudo; no painel, aprova/recusa/revoga so pedidos de 'video'.
+//   fulladmin - ve tudo; no painel, gere tudo o que for 'video' ou 'admin'. Nao mexe noutro fulladmin.
+//   owner     - a tua chave fixa (VT_PIN_ADMIN). Gere tudo, incluindo fulladmins. Nunca expira.
 const ACCESS_TTL = 12 * 3600; // equipa: 12 horas
-const ADMIN_TTL = 30 * 24 * 3600; // admins aprovados por ti: 30 dias
+const ADMIN_TTL = 30 * 24 * 3600; // admin e fulladmin aprovados por um nivel acima: 30 dias
+const RANK = { video: 0, admin: 1, fulladmin: 2, owner: 3 };
 
 async function handleRequest(req, env, h) {
   const body = await readJson(req);
@@ -190,7 +197,8 @@ async function handleStatus(req, env, h) {
   }, 200, h);
 }
 
-async function handleAdmin(url, req, env, h) {
+async function handleAdmin(url, req, env, h, myRole) {
+  const myRank = RANK[myRole] ?? 0;
   if (url.pathname === '/api/admin/requests' && req.method === 'GET') {
     const list = await env.FOTOS.list({ prefix: 'req:' });
     const items = [];
@@ -200,7 +208,8 @@ async function handleAdmin(url, req, env, h) {
     }
     const order = { pending: 0, approved: 1, denied: 2, revoked: 3 };
     items.sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9) || b.requestedAt - a.requestedAt);
-    return json(items, 200, h);
+    // ate onde este nivel pode ir, para a pagina saber que botoes mostrar
+    return json({ items, myRole, canGrantUpTo: myRank > 0 ? Object.keys(RANK).find((r) => RANK[r] === myRank - 1) : null }, 200, h);
   }
   const m = url.pathname.match(/^\/api\/admin\/(approve|deny|revoke)$/);
   if (m && req.method === 'POST') {
@@ -209,15 +218,23 @@ async function handleAdmin(url, req, env, h) {
     const entry = await env.FOTOS.get(`req:${token}`, 'json');
     if (!entry) return json({ error: 'pedido nao encontrado' }, 404, h);
     if (m[1] === 'approve') {
+      const wantRole = (body && body.role) || 'video';
+      if (!(wantRole in RANK) || wantRole === 'owner') return json({ error: 'nivel invalido' }, 400, h);
+      if (RANK[wantRole] >= myRank) return json({ error: 'sem permissao para aprovar como ' + wantRole }, 403, h);
       entry.status = 'approved';
-      entry.role = body && body.role === 'admin' ? 'admin' : 'video';
+      entry.role = wantRole;
       entry.approvedAt = Date.now();
-      const ttl = entry.role === 'admin' ? ADMIN_TTL : ACCESS_TTL;
+      const ttl = wantRole === 'video' ? ACCESS_TTL : ADMIN_TTL;
       entry.expiresAt = entry.approvedAt + ttl * 1000;
       // o KV apaga a chave sozinho ao fim do prazo — o acesso expira sem eu ter de verificar nada
       await env.FOTOS.put(`req:${token}`, JSON.stringify(entry), { expirationTtl: ttl });
+    } else if (m[1] === 'deny') {
+      entry.status = 'denied';
+      await env.FOTOS.put(`req:${token}`, JSON.stringify(entry));
     } else {
-      entry.status = m[1] === 'deny' ? 'denied' : 'revoked';
+      // revogar: so a quem estiver a um nivel abaixo do meu
+      if (RANK[entry.role || 'video'] >= myRank) return json({ error: 'sem permissao para revogar' }, 403, h);
+      entry.status = 'revoked';
       await env.FOTOS.put(`req:${token}`, JSON.stringify(entry));
     }
     return json({ ok: true, status: entry.status, role: entry.role }, 200, h);
@@ -225,10 +242,10 @@ async function handleAdmin(url, req, env, h) {
   return json({ error: 'nada aqui' }, 404, h);
 }
 
-// 'admin' ve todos os grupos e o painel de pedidos; 'video' so os tecnicos de video
+// 'owner' e a tua chave fixa; os outros niveis vem de um pedido aprovado — ver RANK
 async function roleOf(pin, env) {
   if (!pin) return null;
-  if (await same(pin, env.VT_PIN_ADMIN)) return 'admin';
+  if (await same(pin, env.VT_PIN_ADMIN)) return 'owner';
   const entry = await env.FOTOS.get(`req:${pin}`, 'json');
   if (entry && entry.status === 'approved') return entry.role || 'video';
   return null;
@@ -237,7 +254,7 @@ async function roleOf(pin, env) {
 const isVideo = (p) => p.grupo.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().includes('video');
 
 function forRole(data, role) {
-  return role === 'admin' ? data : { ...data, people: data.people.filter(isVideo) };
+  return role === 'video' ? { ...data, people: data.people.filter(isVideo) } : data;
 }
 
 export default {
@@ -262,11 +279,11 @@ export default {
       const role = await roleOf(pin, env);
 
       if (url.pathname.startsWith('/api/admin/')) {
-        if (role !== 'admin') {
+        if ((RANK[role] ?? -1) < RANK.admin) {
           await new Promise((r) => setTimeout(r, 800));
           return json({ error: 'pin' }, 401, h);
         }
-        return handleAdmin(url, req, env, h);
+        return handleAdmin(url, req, env, h, role);
       }
 
       if (!role) {
@@ -311,7 +328,7 @@ export default {
       const pm = url.pathname.match(/^\/pdf\/(\d+)$/);
       if (pm) {
         const id = pm[1];
-        if (role !== 'admin') {
+        if (role === 'video') {
           // a equipa so abre propostas de trabalhos que aparecem na escala dela
           const d = url.searchParams.get('d') || todayDMY();
           if (!/^\d{2}-\d{2}-\d{4}$/.test(d)) return json({ error: 'data' }, 400, h);

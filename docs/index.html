@@ -79,7 +79,7 @@
       api: API, pin: pin, search: 'video', head: HEAD, role: role, expiresAt: expiresAt,
       onAuthFail: logout,
       onLogout: function () { if (confirm('Sair? Vais ter de pedir acesso outra vez.')) logout(); },
-      onRequests: role === 'admin' ? function () { location.href = './?admin=pedidos'; } : null
+      onRequests: isAdminTier(role) ? function () { location.href = './?admin=pedidos'; } : null
     });
   }
 
@@ -137,7 +137,7 @@
           if (x.r.ok && x.j.role) {
             set('vt.pin', pin);
             try { localStorage.removeItem('vt.cache'); localStorage.removeItem('vt.group'); } catch (e) {}
-            if (x.j.role === 'admin' && /admin=pedidos/.test(location.search)) showAdminPanel(pin); else start(pin, x.j.role, x.j.expiresAt);
+            if (isAdminTier(x.j.role) && /admin=pedidos/.test(location.search)) showAdminPanel(pin, x.j.role); else start(pin, x.j.role, x.j.expiresAt);
             return;
           }
           err.textContent = x.r.status === 401 ? 'Código errado.' : 'Erro ' + x.r.status + '.';
@@ -181,13 +181,18 @@
     }).catch(function () { pollTimer = setTimeout(poll, pollDelay); });
   }
 
+  // niveis: cada um so gere quem estiver abaixo dele. owner = a tua chave fixa.
+  var RANK = { video: 0, admin: 1, fulladmin: 2, owner: 3 };
+  function isAdminTier(r) { return (RANK[r] || 0) >= RANK.admin; }
+  var ROLE_LABEL = { admin: 'admin', fulladmin: 'full admin', owner: 'dono' };
+
   // ---------- painel de admin: aprovar / recusar / revogar pedidos ----------
-  function showAdminPanel(pin) {
+  function showAdminPanel(pin, myRole) {
     wrap.className = 'panel';
     wrap.innerHTML =
       '<div class="ph">' + SYM.replace('class="sym"', 'class="sym"') + '<h1>Pedidos de acesso</h1><a id="app" href="#">Ver escala →</a></div>' +
       '<div id="lists"><p class="empty2">A carregar…</p></div>';
-    document.getElementById('app').onclick = function (e) { e.preventDefault(); start(pin, 'admin'); };
+    document.getElementById('app').onclick = function (e) { e.preventDefault(); start(pin, myRole); };
     loadRequests(pin);
   }
 
@@ -195,15 +200,22 @@
     fetch(API + '/api/admin/requests', { headers: { 'X-PIN': pin } }).then(function (r) {
       if (r.status === 401) { logout(); throw new Error('sessão'); }
       return r.json();
-    }).then(function (items) {
+    }).then(function (res) {
+      var items = res.items || [], myRank = RANK[res.myRole] || 0;
       var groups = { pending: [], approved: [], other: [] };
       items.forEach(function (it) { (groups[it.status] || groups.other).push(it); });
       var html = '';
       html += section('A aguardar aprovação', groups.pending, function (it) {
-        return actBtn(it.token, 'deny', 'no', 'Recusar') + actBtn(it.token, 'approve', 'adm', 'Admin') + actBtn(it.token, 'approve', '', 'Aprovar');
+        var b = actBtn(it.token, 'deny', 'no', 'Recusar');
+        if (myRank >= RANK.owner) b += actBtn(it.token, 'approve', 'adm', 'Full admin', 'fulladmin');
+        if (myRank >= RANK.fulladmin) b += actBtn(it.token, 'approve', 'adm', 'Admin', 'admin');
+        return b + actBtn(it.token, 'approve', '', 'Aprovar', 'video');
       }, 'Ninguém à espera.');
       html += section('Com acesso', groups.approved, function (it) {
-        return (it.role === 'admin' ? '<span class="badge">admin</span>' : '') + actBtn(it.token, 'revoke', 'no', 'Revogar');
+        var badge = ROLE_LABEL[it.role] ? '<span class="badge">' + ROLE_LABEL[it.role] + '</span>' : '';
+        // so revoga quem estiver estritamente abaixo do teu nivel
+        var canRevoke = RANK[it.role || 'video'] < myRank;
+        return badge + (canRevoke ? actBtn(it.token, 'revoke', 'no', 'Revogar') : '');
       }, 'Ainda ninguém.', function (it) { return it.expiresAt ? ' · expira ' + when(it.expiresAt) : ''; });
       document.getElementById('lists').innerHTML = html;
       document.querySelectorAll('[data-act]').forEach(function (b) {
@@ -217,9 +229,8 @@
     }).catch(function () {});
   }
 
-  function actBtn(token, act, cls, label) {
-    var role = act === 'approve' && cls === 'adm' ? ' data-role="admin"' : '';
-    return '<button class="' + cls + '" data-act="' + act + '" data-token="' + esc(token) + '"' + role + '>' + label + '</button>';
+  function actBtn(token, act, cls, label, role) {
+    return '<button class="' + cls + '" data-act="' + act + '" data-token="' + esc(token) + '"' + (role ? ' data-role="' + role + '"' : '') + '>' + label + '</button>';
   }
 
   function section(title, items, actions, emptyMsg, extra) {
@@ -245,7 +256,7 @@
     if (pin) {
       fetch(API + '/api/ping', { headers: { 'X-PIN': pin } }).then(function (r) { return r.json(); }).then(function (j) {
         if (!j.role) { logout(); return; }
-        if (j.role === 'admin' && /admin=pedidos/.test(location.search)) showAdminPanel(pin);
+        if (isAdminTier(j.role) && /admin=pedidos/.test(location.search)) showAdminPanel(pin, j.role);
         else start(pin, j.role, j.expiresAt);
       }).catch(function () { start(pin); }); // sem rede: tenta na mesma, o proprio app trata do erro
       return;

@@ -1,4 +1,4 @@
-const CACHE = "videoteam-v11";
+const CACHE = "videoteam-v12";
 const APP_SHELL = [
   "./",
   "./index.html",
