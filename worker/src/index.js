@@ -154,9 +154,10 @@ function nameFromEmail(email) {
 // ---------- pedidos de acesso ----------
 // Cada pedido fica em req:<token> = {email, name, status, requestedAt, approvedAt?, role?}
 // status: pending | approved | denied | revoked. role (quando aprovado): 'video' | 'admin'.
-// Aprovado expira sozinho ao fim de ACCESS_TTL (o KV apaga a chave) — tem de se pedir outra vez.
+// Aprovado expira sozinho ao fim do prazo (o KV apaga a chave) — tem de se pedir outra vez.
 // O token so e conhecido por quem pediu (guardado no telemovel dele) e por ti (painel de admin).
-const ACCESS_TTL = 12 * 3600; // 12 horas
+const ACCESS_TTL = 12 * 3600; // equipa: 12 horas
+const ADMIN_TTL = 30 * 24 * 3600; // admins aprovados por ti: 30 dias
 
 async function handleRequest(req, env, h) {
   const body = await readJson(req);
@@ -211,9 +212,10 @@ async function handleAdmin(url, req, env, h) {
       entry.status = 'approved';
       entry.role = body && body.role === 'admin' ? 'admin' : 'video';
       entry.approvedAt = Date.now();
-      entry.expiresAt = entry.approvedAt + ACCESS_TTL * 1000;
+      const ttl = entry.role === 'admin' ? ADMIN_TTL : ACCESS_TTL;
+      entry.expiresAt = entry.approvedAt + ttl * 1000;
       // o KV apaga a chave sozinho ao fim do prazo — o acesso expira sem eu ter de verificar nada
-      await env.FOTOS.put(`req:${token}`, JSON.stringify(entry), { expirationTtl: ACCESS_TTL });
+      await env.FOTOS.put(`req:${token}`, JSON.stringify(entry), { expirationTtl: ttl });
     } else {
       entry.status = m[1] === 'deny' ? 'denied' : 'revoked';
       await env.FOTOS.put(`req:${token}`, JSON.stringify(entry));

@@ -202,9 +202,9 @@
       html += section('A aguardar aprovação', groups.pending, function (it) {
         return actBtn(it.token, 'deny', 'no', 'Recusar') + actBtn(it.token, 'approve', 'adm', 'Admin') + actBtn(it.token, 'approve', '', 'Aprovar');
       }, 'Ninguém à espera.');
-      html += section('Com acesso · expira 12h depois de aprovar', groups.approved, function (it) {
+      html += section('Com acesso', groups.approved, function (it) {
         return (it.role === 'admin' ? '<span class="badge">admin</span>' : '') + actBtn(it.token, 'revoke', 'no', 'Revogar');
-      }, 'Ainda ninguém.');
+      }, 'Ainda ninguém.', function (it) { return it.expiresAt ? ' · expira ' + when(it.expiresAt) : ''; });
       document.getElementById('lists').innerHTML = html;
       document.querySelectorAll('[data-act]').forEach(function (b) {
         b.onclick = function () {
@@ -222,11 +222,11 @@
     return '<button class="' + cls + '" data-act="' + act + '" data-token="' + esc(token) + '"' + role + '>' + label + '</button>';
   }
 
-  function section(title, items, actions, emptyMsg) {
+  function section(title, items, actions, emptyMsg, extra) {
     var h = '<div class="grp"><h2>' + title + ' (' + items.length + ')</h2>';
     if (!items.length) return h + '<p class="empty2">' + emptyMsg + '</p></div>';
     items.forEach(function (it) {
-      h += '<div class="row"><div class="who"><b>' + esc(it.name) + '</b><small>' + esc(it.email || '') + ' · ' + when(it.requestedAt) + '</small></div><div class="acts">' + actions(it) + '</div></div>';
+      h += '<div class="row"><div class="who"><b>' + esc(it.name) + '</b><small>' + esc(it.email || '') + ' · ' + when(it.requestedAt) + (extra ? extra(it) : '') + '</small></div><div class="acts">' + actions(it) + '</div></div>';
     });
     return h + '</div>';
   }

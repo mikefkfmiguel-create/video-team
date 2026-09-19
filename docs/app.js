@@ -213,6 +213,13 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
     return long ? DOW[d.getDay()] + ', ' + d.getDate() + ' ' + MON[d.getMonth()] : d.getDate() + ' ' + MON[d.getMonth()];
   }
 
+  // "acesso ate": so a hora se for hoje, senao tambem o dia (acessos longos, ex. admin 30 dias)
+  function fmtExpiry(ts) {
+    var d = new Date(ts), hm = pad(d.getHours()) + ':' + pad(d.getMinutes());
+    if (d.toDateString() === new Date().toDateString()) return hm;
+    return d.getDate() + ' ' + MON[d.getMonth()] + ', ' + hm;
+  }
+
   // ---------- vistas ----------
   function renderGrid(ps) {
     var days = state.data.days;
@@ -528,7 +535,7 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
     '<div class="ctl"><div class="seg"><button data-view="grelha">Grelha</button><button data-view="dia">Dia</button></div>' +
     (forceOnly ? '' : '<label class="tog"><input type="checkbox" id="only"> só com marcação</label>') + '<select id="group"></select><input type="search" id="q" placeholder="Procurar…">' +
     '<button class="btn" id="reload" title="Atualizar">⟳</button><span id="status"></span>' +
-    (cfg.expiresAt ? '<span id="expires" class="exp">acesso até ' + pad(new Date(cfg.expiresAt).getHours()) + ':' + pad(new Date(cfg.expiresAt).getMinutes()) + '</span>' : '') +
+    (cfg.expiresAt ? '<span id="expires" class="exp">acesso até ' + fmtExpiry(cfg.expiresAt) + '</span>' : '') +
     (cfg.onRequests ? '<button class="btn" id="requests" title="Pedidos de acesso">Pedidos</button>' : '') +
     (cfg.onLogout ? '<button class="btn" id="logout" title="Sair / mudar código">Sair</button>' : '') + '</div>' +
     '<a class="mark" title="MIKE APPS"><svg class="sym" viewBox="72 72 368 368" aria-hidden="true"><defs><linearGradient id="vtF" x1=".1" y1="0" x2=".9" y2="1"><stop offset="0" stop-color="#1246E6"/><stop offset="1" stop-color="#2E7BFF"/></linearGradient><linearGradient id="vtC" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22D3EE"/><stop offset="1" stop-color="#5FE9FF"/></linearGradient><linearGradient id="vtP" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2E7BFF"/><stop offset="1" stop-color="#22D3EE"/></linearGradient></defs><rect x="72" y="72" width="168" height="168" rx="30" fill="url(#vtF)"/><rect x="272" y="72" width="168" height="168" rx="64" fill="url(#vtC)"/><circle cx="156" cy="356" r="84" fill="#3B8CFF"/><path d="M306 296L306 416L410 356Z" fill="url(#vtP)" stroke="url(#vtP)" stroke-width="30" stroke-linejoin="round"/></svg><span><b>MIKE</b> APPS</span></a></div>' +
