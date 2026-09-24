@@ -40,6 +40,10 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
       '.hor{display:inline-block;margin-top:10px;font-size:13px;background:var(--soft);border-radius:8px;padding:5px 10px}',
       '.pdf{display:flex;align-items:center;gap:10px;margin-top:16px;padding:12px 14px;border-radius:10px;background:linear-gradient(135deg,var(--acc2),var(--acc));color:#fff;text-decoration:none;font-weight:600}.pdf span{font-size:10px;letter-spacing:.08em;background:rgba(255,255,255,.2);border-radius:5px;padding:3px 6px}',
       '.sec{margin-top:22px}.sec h3{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin:0 0 10px}',
+      '.seg{display:flex;gap:6px;margin-top:16px;overflow-x:auto}.seg button{flex:none;height:32px;padding:0 14px;border-radius:8px;background:var(--soft);color:var(--mut);font-size:13px;font-weight:600}.seg button.on{background:var(--acc);color:#fff}',
+      '.strip{display:flex;gap:6px;overflow-x:auto;margin:0 0 18px;padding-bottom:2px;scrollbar-width:thin}',
+      '.pd{flex:none;width:46px;padding:8px 0;border-radius:10px;display:flex;flex-direction:column;align-items:center;gap:2px;background:var(--panel);box-shadow:var(--shadow);color:var(--mut);font-size:11px;text-transform:uppercase}.pd b{font-size:16px;color:var(--ink);text-transform:none}',
+      '.pd.today b{color:var(--acc)}.pd.on{background:linear-gradient(135deg,var(--acc2),var(--acc));color:#fff}.pd.on b{color:#fff}',
       '.sector{margin-bottom:18px}.sector h4{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}.sector+.sector{margin-top:0}',
       '.crewi{display:flex;align-items:center;gap:10px;background:var(--panel);border-radius:10px;padding:8px 10px;box-shadow:var(--shadow);margin-bottom:8px}.crewi:last-child{margin-bottom:0}.crewi b{font-size:14px;font-weight:600;display:block}.crewi small{color:var(--mut);font-size:12px;display:block;text-transform:capitalize}',
       '.av{position:relative;flex:none;border-radius:50%;overflow:hidden;display:inline-block}.av img,.av .ini{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.av .ini{display:grid;place-items:center;font-size:11px;font-weight:700;background:hsl(var(--h) 45% 88%);color:hsl(var(--h) 45% 30%)}',
@@ -61,27 +65,56 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
       var pw = document.getElementById('pw');
       if (j.error) { pw.innerHTML = '<p class="empty">' + esc(j.error) + '</p>'; return; }
       var crew = j.crew || [];
-      var days = ranges(j.days || []);
+      var allDays = j.days || [];
+      var todayKey = keyOf(new Date());
       var pdfHtml = j.prop ? '<a class="pdf" href="' + esc(cfg.api + '/pdf/' + j.prop + '?k=' + encodeURIComponent(cfg.pin) + '&n=' + encodeURIComponent(j.event || j.label || '')) + '" target="_blank" rel="noopener"><span>PDF</span>Proposta técnica</a>' : '';
 
-      // agrupar por setor (Video, Som, Estruturas…), cada grupo com a gente ordenada por nome
-      var bySector = {};
-      crew.forEach(function (p) { (bySector[p.grupo || 'Outros'] = bySector[p.grupo || 'Outros'] || []).push(p); });
-      var sectors = Object.keys(bySector).sort(function (a, b) { return a.localeCompare(b, 'pt'); });
-      var crewHtml = sectors.map(function (grupo) {
-        var people = bySector[grupo].sort(function (a, b) { return a.name.localeCompare(b.name, 'pt'); });
-        return '<div class="sector"><h4>' + esc(grupo) + ' (' + people.length + ')</h4>' +
-          people.map(function (p) {
-            return '<div class="crewi">' + avatar(p, 36) + '<div><b>' + esc(p.name) + '</b><small>' + esc(ranges(p.days || [])) + '</small></div></div>';
-          }).join('') + '</div>';
-      }).join('');
+      function bySectorHtml(people) {
+        var bySector = {};
+        people.forEach(function (p) { (bySector[p.grupo || 'Outros'] = bySector[p.grupo || 'Outros'] || []).push(p); });
+        var sectors = Object.keys(bySector).sort(function (a, b) { return a.localeCompare(b, 'pt'); });
+        if (!sectors.length) return '<p class="empty">Ninguém marcado.</p>';
+        return sectors.map(function (grupo) {
+          var ps = bySector[grupo].sort(function (a, b) { return a.name.localeCompare(b.name, 'pt'); });
+          return '<div class="sector"><h4>' + esc(grupo) + ' (' + ps.length + ')</h4>' + ps.map(function (p) { return p.row; }).join('') + '</div>';
+        }).join('');
+      }
 
-      pw.innerHTML =
-        '<div class="card"><h2>' + esc(j.event || j.label || '') + '</h2>' +
-        '<p>' + (j.code ? 'OS ' + esc(j.code) : '') + (j.client ? ' · ' + esc(j.client) : '') + '</p>' +
-        (days ? '<p>' + esc(days) + '</p>' : '') +
-        (j.hor ? '<span class="hor">' + esc(j.hor) + '</span>' : '') + pdfHtml + '</div>' +
-        '<div class="sec"><h3>Equipa (' + crew.length + ')</h3>' + crewHtml + '</div>';
+      var view = 'dia'; // arranca sempre na vista Dia
+      var selDay = allDays.indexOf(todayKey) >= 0 ? todayKey : allDays[0];
+
+      function paint() {
+        var stripHtml = allDays.map(function (k) {
+          var d = fromKey(k);
+          var cls = 'pd' + (k === selDay ? ' on' : '') + (k === todayKey ? ' today' : '');
+          return '<button class="' + cls + '" data-day="' + k + '"><span>' + DOW[d.getDay()] + '</span><b>' + d.getDate() + '</b></button>';
+        }).join('');
+
+        var body;
+        if (view === 'dia') {
+          var todays = crew.filter(function (p) { return (p.days || []).indexOf(selDay) >= 0; })
+            .map(function (p) { return Object.assign({}, p, { row: '<div class="crewi">' + avatar(p, 36) + '<b>' + esc(p.name) + '</b></div>' }); });
+          var dObj = fromKey(selDay);
+          body = '<div class="strip">' + stripHtml + '</div>' +
+            '<div class="sec"><h3>' + DOW[dObj.getDay()] + ', ' + dObj.getDate() + ' ' + MON[dObj.getMonth()] + (selDay === todayKey ? ' · hoje' : '') + ' (' + todays.length + ')</h3>' +
+            bySectorHtml(todays) + '</div>';
+        } else {
+          var all = crew.map(function (p) { return Object.assign({}, p, { row: '<div class="crewi">' + avatar(p, 36) + '<div><b>' + esc(p.name) + '</b><small>' + esc(ranges(p.days || [])) + '</small></div></div>' }); });
+          body = '<div class="sec"><h3>Equipa (' + crew.length + ')</h3>' + bySectorHtml(all) + '</div>';
+        }
+
+        pw.innerHTML =
+          '<div class="card"><h2>' + esc(j.event || j.label || '') + '</h2>' +
+          '<p>' + (j.code ? 'OS ' + esc(j.code) : '') + (j.client ? ' · ' + esc(j.client) : '') + '</p>' +
+          '<p>' + esc(ranges(allDays)) + '</p>' +
+          (j.hor ? '<span class="hor">' + esc(j.hor) + '</span>' : '') + pdfHtml +
+          '<div class="seg"><button data-view="dia">Dia</button><button data-view="todos">Todos os dias</button></div></div>' +
+          body;
+
+        pw.querySelectorAll('.seg button').forEach(function (b) { b.classList.toggle('on', b.dataset.view === view); b.onclick = function () { view = b.dataset.view; paint(); }; });
+        if (view === 'dia') pw.querySelectorAll('[data-day]').forEach(function (b) { b.onclick = function () { selDay = b.dataset.day; paint(); }; });
+      }
+      paint();
     }).catch(function () {
       document.getElementById('pw').innerHTML = '<p class="empty">Não consegui carregar este projeto.</p>';
     });

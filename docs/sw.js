@@ -1,4 +1,4 @@
-const CACHE = "videoteam-v15";
+const CACHE = "videoteam-v16";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -29,11 +29,14 @@ self.addEventListener("activate", (event) => {
 
 // So a casca da app. Os dados (Worker) nunca passam por aqui: sao de outra origem.
 // Rede primeiro, cache so quando nao ha rede, para uma correcao aparecer logo.
+// cache:"no-store" no pedido feito aqui, para o proprio browser nunca devolver uma
+// copia HTTP antiga por baixo do pano — sem isto, "rede primeiro" nem sempre era rede a serio.
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin || event.request.method !== "GET") return;
+  const freshReq = new Request(event.request, { cache: "no-store" });
   event.respondWith(
-    fetch(event.request).then((resp) => {
+    fetch(freshReq).then((resp) => {
       if (resp && resp.ok) {
         const copy = resp.clone();
         caches.open(CACHE).then((cache) => cache.put(event.request, copy));
