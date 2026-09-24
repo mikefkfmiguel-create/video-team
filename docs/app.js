@@ -54,8 +54,8 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
     ].join('\n');
 
     document.open();
-    document.write('<!doctype html><html lang="pt"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Video Team</title>' + (cfg.head || '') + '<style>' + PCSS + '</style></head><body>' +
-      '<div class="wrap"><div class="hd">' + PSYM + '<h1>VIDEO<span> TEAM</span></h1>' +
+    document.write('<!doctype html><html lang="pt"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Escala do evento</title>' + (cfg.head || '') + '<style>' + PCSS + '</style></head><body>' +
+      '<div class="wrap"><div class="hd">' + PSYM + '<h1>ESCALA<span> DO EVENTO</span></h1>' +
       (cfg.onExit ? '<button class="pexit" id="pexit">Sair</button>' : '') + '</div>' +
       '<div id="pw"><div class="spin"></div></div><div class="by"><b>MIKE</b> APPS</div></div></body></html>');
     document.close();
@@ -67,6 +67,7 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
     }).then(function (j) {
       var pw = document.getElementById('pw');
       if (j.error) { pw.innerHTML = '<p class="empty">' + esc(j.error) + '</p>'; return; }
+      document.title = (j.event || j.label || 'Escala do evento') + ' · Video Team';
       var crew = j.crew || [];
       var allDays = j.days || [];
       var todayKey = keyOf(new Date());
