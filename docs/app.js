@@ -40,7 +40,8 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
       '.hor{display:inline-block;margin-top:10px;font-size:13px;background:var(--soft);border-radius:8px;padding:5px 10px}',
       '.pdf{display:flex;align-items:center;gap:10px;margin-top:16px;padding:12px 14px;border-radius:10px;background:linear-gradient(135deg,var(--acc2),var(--acc));color:#fff;text-decoration:none;font-weight:600}.pdf span{font-size:10px;letter-spacing:.08em;background:rgba(255,255,255,.2);border-radius:5px;padding:3px 6px}',
       '.sec{margin-top:22px}.sec h3{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin:0 0 10px}',
-      '.crew{display:flex;flex-direction:column;gap:8px}.crewi{display:flex;align-items:center;gap:10px;background:var(--panel);border-radius:10px;padding:8px 10px;box-shadow:var(--shadow)}.crewi b{font-size:14px;font-weight:600;display:block}.crewi small{color:var(--mut);font-size:12px;display:block}',
+      '.sector{margin-bottom:18px}.sector h4{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}.sector+.sector{margin-top:0}',
+      '.crewi{display:flex;align-items:center;gap:10px;background:var(--panel);border-radius:10px;padding:8px 10px;box-shadow:var(--shadow);margin-bottom:8px}.crewi:last-child{margin-bottom:0}.crewi b{font-size:14px;font-weight:600;display:block}.crewi small{color:var(--mut);font-size:12px;display:block;text-transform:capitalize}',
       '.av{position:relative;flex:none;border-radius:50%;overflow:hidden;display:inline-block}.av img,.av .ini{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.av .ini{display:grid;place-items:center;font-size:11px;font-weight:700;background:hsl(var(--h) 45% 88%);color:hsl(var(--h) 45% 30%)}',
       '.by{margin-top:24px;text-align:center;font-size:11px;letter-spacing:.08em;color:var(--mut);opacity:.7}.by b{font-weight:700}',
       '.empty{color:var(--mut);text-align:center;padding:40px 16px}',
@@ -59,17 +60,28 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
     }).then(function (j) {
       var pw = document.getElementById('pw');
       if (j.error) { pw.innerHTML = '<p class="empty">' + esc(j.error) + '</p>'; return; }
-      var days = (j.days || []).map(function (k) { var d = fromKey(k); return DOW[d.getDay()] + ' ' + d.getDate() + ' ' + MON[d.getMonth()]; }).join(', ');
+      var crew = j.crew || [];
+      var days = ranges(j.days || []);
       var pdfHtml = j.prop ? '<a class="pdf" href="' + esc(cfg.api + '/pdf/' + j.prop + '?k=' + encodeURIComponent(cfg.pin) + '&n=' + encodeURIComponent(j.event || j.label || '')) + '" target="_blank" rel="noopener"><span>PDF</span>Proposta técnica</a>' : '';
-      var crewHtml = (j.crew || []).map(function (p) {
-        return '<div class="crewi">' + avatar(p, 36) + '<div><b>' + esc(p.name) + '</b><small>' + esc(p.grupo || '') + '</small></div></div>';
+
+      // agrupar por setor (Video, Som, Estruturas…), cada grupo com a gente ordenada por nome
+      var bySector = {};
+      crew.forEach(function (p) { (bySector[p.grupo || 'Outros'] = bySector[p.grupo || 'Outros'] || []).push(p); });
+      var sectors = Object.keys(bySector).sort(function (a, b) { return a.localeCompare(b, 'pt'); });
+      var crewHtml = sectors.map(function (grupo) {
+        var people = bySector[grupo].sort(function (a, b) { return a.name.localeCompare(b.name, 'pt'); });
+        return '<div class="sector"><h4>' + esc(grupo) + ' (' + people.length + ')</h4>' +
+          people.map(function (p) {
+            return '<div class="crewi">' + avatar(p, 36) + '<div><b>' + esc(p.name) + '</b><small>' + esc(ranges(p.days || [])) + '</small></div></div>';
+          }).join('') + '</div>';
       }).join('');
+
       pw.innerHTML =
         '<div class="card"><h2>' + esc(j.event || j.label || '') + '</h2>' +
         '<p>' + (j.code ? 'OS ' + esc(j.code) : '') + (j.client ? ' · ' + esc(j.client) : '') + '</p>' +
         (days ? '<p>' + esc(days) + '</p>' : '') +
         (j.hor ? '<span class="hor">' + esc(j.hor) + '</span>' : '') + pdfHtml + '</div>' +
-        '<div class="sec"><h3>Equipa (' + (j.crew || []).length + ')</h3><div class="crew">' + crewHtml + '</div></div>';
+        '<div class="sec"><h3>Equipa (' + crew.length + ')</h3>' + crewHtml + '</div>';
     }).catch(function () {
       document.getElementById('pw').innerHTML = '<p class="empty">Não consegui carregar este projeto.</p>';
     });
