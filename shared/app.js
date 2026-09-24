@@ -440,7 +440,7 @@
     btn.disabled = true; var was = btn.innerHTML; btn.innerHTML = '<span>LINK</span>A gerar…';
     fetch(cfg.api + '/api/admin/share', {
       method: 'POST', headers: { 'X-PIN': cfg.pin, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key: sig(e), label: e.event || ('OS ' + e.code) })
+      body: JSON.stringify({ key: sig(e), label: e.event || ('OS ' + e.code), d: state.dmy })
     }).then(function (r) { return r.json(); }).then(function (j) {
       btn.disabled = false; btn.innerHTML = was;
       if (!j.token) { alert(j.error || 'Não consegui criar o link.'); return; }

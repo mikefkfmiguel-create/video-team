@@ -222,9 +222,13 @@ async function handleAdmin(url, req, env, h, myRole) {
     const key = String((body && body.key) || '');
     const label = String((body && body.label) || key).slice(0, 120);
     if (!key) return json({ error: 'projeto invalido' }, 400, h);
+    // a semana/dia que estava aberto quando se partilhou: o scan da equipa parte dali,
+    // nao de "hoje", para apanhar projetos vistos numa semana diferente da atual
+    const dRaw = String((body && body.d) || '');
+    const anchor = /^\d{2}-\d{2}-\d{4}$/.test(dRaw) ? dRaw : todayDMY();
     const token = randomToken();
     const now = Date.now();
-    const entry = { name: label, project: key, role: 'project', status: 'approved', requestedAt: now, approvedAt: now, expiresAt: now + PROJECT_TTL * 1000 };
+    const entry = { name: label, project: key, anchor, role: 'project', status: 'approved', requestedAt: now, approvedAt: now, expiresAt: now + PROJECT_TTL * 1000 };
     await env.FOTOS.put(`req:${token}`, JSON.stringify(entry), { expirationTtl: PROJECT_TTL });
     return json({ token }, 200, h);
   }
@@ -274,23 +278,69 @@ function forRole(data, role) {
   return role === 'video' ? { ...data, people: data.people.filter(isVideo) } : data;
 }
 
+function addDaysToDMY(dmy, offset) {
+  const [dd, mm, yyyy] = dmy.split('-').map(Number);
+  const d = new Date(yyyy, mm - 1, dd);
+  d.setDate(d.getDate() + offset);
+  return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+}
+
 // vista de um projeto so: recalcula a equipa/dias na hora, a partir da escala atual —
-// nunca fica desatualizado, mesmo que o 7Eventos mude a equipa depois do link ser criado
+// nunca fica desatualizado, mesmo que o 7Eventos mude a equipa depois do link ser criado.
+// A escala so devolve uma janela de ~1 mes de cada vez; se os dias encontrados tocarem
+// a borda da janela, isso quer dizer que o projeto continua para alem dela — vamos a mais
+// janelas nessa direcao ate deixarmos de tocar a borda (ou seja, ate apanharmos o fim).
 async function projectView(env, entry) {
-  const data = await getEscala(env, todayDMY());
   const key = entry.project;
-  let meta = null;
-  const crew = [];
-  for (const p of data.people) {
-    const days = [];
-    for (const day of Object.keys(p.cells)) {
-      const hit = p.cells[day].find((e) => sigOf(e) === key);
-      if (hit) { days.push(day); if (!meta) meta = hit; }
+  const base = entry.anchor || todayDMY();
+  const STEP = 25, MAX_HOPS = 4;
+
+  async function windowHits(dmy) {
+    const data = await getEscala(env, dmy);
+    const hits = [];
+    for (const p of data.people) {
+      for (const day of Object.keys(p.cells)) {
+        const hit = p.cells[day].find((e) => sigOf(e) === key);
+        if (hit) hits.push({ day, entry: hit, p });
+      }
     }
-    if (days.length) crew.push({ id: p.id, name: p.name, foto: p.foto, grupo: p.grupo, days: days.sort() });
+    return { days: data.days, hits };
   }
-  if (!meta) return null;
-  crew.sort((a, b) => a.name.localeCompare(b.name, 'pt'));
+
+  const crewMap = new Map();
+  let meta = null;
+  function absorb(hits) {
+    for (const { day, entry: e, p } of hits) {
+      if (!meta) meta = e;
+      if (!crewMap.has(p.id)) crewMap.set(p.id, { id: p.id, name: p.name, foto: p.foto, grupo: p.grupo, days: new Set() });
+      crewMap.get(p.id).days.add(day);
+    }
+  }
+
+  const first = await windowHits(base);
+  if (!first.hits.length) return null;
+  absorb(first.hits);
+  const touchesStart = first.hits.some((x) => x.day === first.days[0]);
+  const touchesEnd = first.hits.some((x) => x.day === first.days[first.days.length - 1]);
+
+  if (touchesStart) {
+    for (let hop = 1; hop <= MAX_HOPS; hop++) {
+      const w = await windowHits(addDaysToDMY(base, -hop * STEP));
+      if (!w.hits.length) break;
+      absorb(w.hits);
+      if (!w.hits.some((x) => x.day === w.days[0])) break; // deixou de tocar a borda: achamos o inicio
+    }
+  }
+  if (touchesEnd) {
+    for (let hop = 1; hop <= MAX_HOPS; hop++) {
+      const w = await windowHits(addDaysToDMY(base, hop * STEP));
+      if (!w.hits.length) break;
+      absorb(w.hits);
+      if (!w.hits.some((x) => x.day === w.days[w.days.length - 1])) break;
+    }
+  }
+
+  const crew = [...crewMap.values()].map((c) => ({ ...c, days: [...c.days].sort() })).sort((a, b) => a.name.localeCompare(b.name, 'pt'));
   return {
     label: entry.name, key,
     code: meta.code, event: meta.event, client: meta.client, hor: meta.hor, prop: meta.prop,
