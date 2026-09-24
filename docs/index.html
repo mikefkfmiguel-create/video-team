@@ -258,12 +258,29 @@
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
 
   document.addEventListener('DOMContentLoaded', function () {
-    // link de um projeto partilhado (?p=token): fica gravado e tira o token da barra de endereco
+    // ?reset=1: apaga tudo o que estiver gravado e mostra o ecra de entrada — util para
+    // sair de um estado preso, ex. depois de abrir um link de projeto por engano
+    if (/[?&]reset(=|&|$)/.test(location.search)) {
+      ['vt.pin', 'vt.reqtoken', 'vt.reqname', 'vt.cache', 'vt.group', 'vt.only', 'vt.view'].forEach(function (k) { set(k, null); });
+      history.replaceState(null, '', location.pathname);
+      showRequestForm();
+      return;
+    }
+
+    // link de um projeto partilhado (?p=token): mostra so esse projeto NESTA visita —
+    // nunca grava nada, para nao substituir uma sessao normal que ja exista neste aparelho
     var shared = /[?&]p=([^&]+)/.exec(location.search);
     if (shared) {
-      set('vt.pin', decodeURIComponent(shared[1])); set('vt.reqtoken', null); set('vt.reqname', null);
+      var ptoken = decodeURIComponent(shared[1]);
       history.replaceState(null, '', location.pathname);
+      VideoTeam({
+        api: API, pin: ptoken, search: 'video', head: HEAD, role: 'project',
+        onAuthFail: function () { showRequestForm('Este link expirou ou foi revogado.'); },
+        onExit: function () { location.href = location.pathname; }
+      });
+      return;
     }
+
     var pin = get('vt.pin');
     if (pin) {
       fetch(API + '/api/ping', { headers: { 'X-PIN': pin } }).then(function (r) { return r.json(); }).then(function (j) {

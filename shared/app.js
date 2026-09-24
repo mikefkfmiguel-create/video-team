@@ -33,7 +33,8 @@
       '@media (prefers-color-scheme:dark){:root{--bg:#0C1020;--panel:#131a2c;--ink:#e8ecf5;--mut:#8f9ab0;--line:#232c42;--soft:#182036;--acc:#3B8CFF;--acc2:#1246E6;--shadow:0 1px 2px rgba(0,0,0,.4)}}',
       '*{box-sizing:border-box}html,body{margin:0;min-height:100%}body{background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:16px;display:flex;justify-content:center}',
       '.wrap{width:min(480px,100%);margin-top:min(6vh,50px)}',
-      '.hd{display:flex;align-items:center;gap:10px;margin-bottom:18px}.hd .sym{width:32px;height:32px;flex:none}.hd h1{margin:0;font-size:18px;letter-spacing:.04em;font-weight:700}.hd h1 span{font-weight:300;opacity:.72}',
+      '.hd{display:flex;align-items:center;gap:10px;margin-bottom:18px}.hd .sym{width:32px;height:32px;flex:none}.hd h1{margin:0;font-size:18px;letter-spacing:.04em;font-weight:700;flex:1}.hd h1 span{font-weight:300;opacity:.72}',
+      '.pexit{flex:none;height:30px;padding:0 12px;border-radius:8px;background:var(--soft);color:var(--mut);font-size:12px;font-weight:600}',
       '.card{background:var(--panel);border-radius:16px;box-shadow:var(--shadow);padding:22px 20px;border-left:5px solid var(--acc)}',
       '.card h2{margin:0 0 6px;font-size:22px}.card p{margin:2px 0;color:var(--mut);font-size:13px}',
       '.hor{display:inline-block;margin-top:10px;font-size:13px;background:var(--soft);border-radius:8px;padding:5px 10px}',
@@ -53,9 +54,11 @@
 
     document.open();
     document.write('<!doctype html><html lang="pt"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Video Team</title>' + (cfg.head || '') + '<style>' + PCSS + '</style></head><body>' +
-      '<div class="wrap"><div class="hd">' + PSYM + '<h1>VIDEO<span> TEAM</span></h1></div>' +
+      '<div class="wrap"><div class="hd">' + PSYM + '<h1>VIDEO<span> TEAM</span></h1>' +
+      (cfg.onExit ? '<button class="pexit" id="pexit">Sair</button>' : '') + '</div>' +
       '<div id="pw"><div class="spin"></div></div><div class="by"><b>MIKE</b> APPS</div></div></body></html>');
     document.close();
+    if (cfg.onExit) document.getElementById('pexit').onclick = cfg.onExit;
 
     fetch(cfg.api + '/api/projeto', { headers: { 'X-PIN': cfg.pin } }).then(function (r) {
       if (r.status === 401) { if (cfg.onAuthFail) cfg.onAuthFail(); throw new Error('sem acesso'); }
