@@ -25,6 +25,58 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
   function store(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   function recall(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 
+  // ---------- vista de um projeto so (link partilhado, cfg.role === 'project') ----------
+  // Pagina propria, minima: so este trabalho e a equipa dele. Sem grelha, sem mes, sem mais nada.
+  if (cfg.role === 'project') {
+    var PSYM = '<svg class="sym" viewBox="72 72 368 368" aria-hidden="true"><defs><linearGradient id="vtF" x1=".1" y1="0" x2=".9" y2="1"><stop offset="0" stop-color="#1246E6"/><stop offset="1" stop-color="#2E7BFF"/></linearGradient><linearGradient id="vtC" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22D3EE"/><stop offset="1" stop-color="#5FE9FF"/></linearGradient><linearGradient id="vtP" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2E7BFF"/><stop offset="1" stop-color="#22D3EE"/></linearGradient></defs><rect x="72" y="72" width="168" height="168" rx="30" fill="url(#vtF)"/><rect x="272" y="72" width="168" height="168" rx="64" fill="url(#vtC)"/><circle cx="156" cy="356" r="84" fill="#3B8CFF"/><path d="M306 296L306 416L410 356Z" fill="url(#vtP)" stroke="url(#vtP)" stroke-width="30" stroke-linejoin="round"/></svg>';
+    var PCSS = [
+      ':root{color-scheme:light dark;--bg:#f4f6fb;--panel:#fff;--ink:#0C1020;--mut:#5b6478;--line:#e1e6f0;--soft:#eef1f8;--acc:#2E7BFF;--acc2:#1246E6;--shadow:0 1px 2px rgba(0,0,0,.06),0 4px 16px rgba(0,0,0,.06)}',
+      '@media (prefers-color-scheme:dark){:root{--bg:#0C1020;--panel:#131a2c;--ink:#e8ecf5;--mut:#8f9ab0;--line:#232c42;--soft:#182036;--acc:#3B8CFF;--acc2:#1246E6;--shadow:0 1px 2px rgba(0,0,0,.4)}}',
+      '*{box-sizing:border-box}html,body{margin:0;min-height:100%}body{background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:16px;display:flex;justify-content:center}',
+      '.wrap{width:min(480px,100%);margin-top:min(6vh,50px)}',
+      '.hd{display:flex;align-items:center;gap:10px;margin-bottom:18px}.hd .sym{width:32px;height:32px;flex:none}.hd h1{margin:0;font-size:18px;letter-spacing:.04em;font-weight:700}.hd h1 span{font-weight:300;opacity:.72}',
+      '.card{background:var(--panel);border-radius:16px;box-shadow:var(--shadow);padding:22px 20px;border-left:5px solid var(--acc)}',
+      '.card h2{margin:0 0 6px;font-size:22px}.card p{margin:2px 0;color:var(--mut);font-size:13px}',
+      '.hor{display:inline-block;margin-top:10px;font-size:13px;background:var(--soft);border-radius:8px;padding:5px 10px}',
+      '.pdf{display:flex;align-items:center;gap:10px;margin-top:16px;padding:12px 14px;border-radius:10px;background:linear-gradient(135deg,var(--acc2),var(--acc));color:#fff;text-decoration:none;font-weight:600}.pdf span{font-size:10px;letter-spacing:.08em;background:rgba(255,255,255,.2);border-radius:5px;padding:3px 6px}',
+      '.sec{margin-top:22px}.sec h3{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin:0 0 10px}',
+      '.crew{display:flex;flex-direction:column;gap:8px}.crewi{display:flex;align-items:center;gap:10px;background:var(--panel);border-radius:10px;padding:8px 10px;box-shadow:var(--shadow)}.crewi b{font-size:14px;font-weight:600;display:block}.crewi small{color:var(--mut);font-size:12px;display:block}',
+      '.av{position:relative;flex:none;border-radius:50%;overflow:hidden;display:inline-block}.av img,.av .ini{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.av .ini{display:grid;place-items:center;font-size:11px;font-weight:700;background:hsl(var(--h) 45% 88%);color:hsl(var(--h) 45% 30%)}',
+      '.by{margin-top:24px;text-align:center;font-size:11px;letter-spacing:.08em;color:var(--mut);opacity:.7}.by b{font-weight:700}',
+      '.empty{color:var(--mut);text-align:center;padding:40px 16px}',
+      '.spin{width:26px;height:26px;border:3px solid var(--line);border-top-color:var(--acc);border-radius:50%;margin:40px auto;animation:sp .8s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}'
+    ].join('\n');
+
+    document.open();
+    document.write('<!doctype html><html lang="pt"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Video Team</title>' + (cfg.head || '') + '<style>' + PCSS + '</style></head><body>' +
+      '<div class="wrap"><div class="hd">' + PSYM + '<h1>VIDEO<span> TEAM</span></h1></div>' +
+      '<div id="pw"><div class="spin"></div></div><div class="by"><b>MIKE</b> APPS</div></div></body></html>');
+    document.close();
+
+    fetch(cfg.api + '/api/projeto', { headers: { 'X-PIN': cfg.pin } }).then(function (r) {
+      if (r.status === 401) { if (cfg.onAuthFail) cfg.onAuthFail(); throw new Error('sem acesso'); }
+      return r.json();
+    }).then(function (j) {
+      var pw = document.getElementById('pw');
+      if (j.error) { pw.innerHTML = '<p class="empty">' + esc(j.error) + '</p>'; return; }
+      var days = (j.days || []).map(function (k) { var d = fromKey(k); return DOW[d.getDay()] + ' ' + d.getDate() + ' ' + MON[d.getMonth()]; }).join(', ');
+      var pdfHtml = j.prop ? '<a class="pdf" href="' + esc(cfg.api + '/pdf/' + j.prop + '?k=' + encodeURIComponent(cfg.pin) + '&n=' + encodeURIComponent(j.event || j.label || '')) + '" target="_blank" rel="noopener"><span>PDF</span>Proposta técnica</a>' : '';
+      var crewHtml = (j.crew || []).map(function (p) {
+        return '<div class="crewi">' + avatar(p, 36) + '<div><b>' + esc(p.name) + '</b><small>' + esc(p.grupo || '') + '</small></div></div>';
+      }).join('');
+      pw.innerHTML =
+        '<div class="card"><h2>' + esc(j.event || j.label || '') + '</h2>' +
+        '<p>' + (j.code ? 'OS ' + esc(j.code) : '') + (j.client ? ' · ' + esc(j.client) : '') + '</p>' +
+        (days ? '<p>' + esc(days) + '</p>' : '') +
+        (j.hor ? '<span class="hor">' + esc(j.hor) + '</span>' : '') + pdfHtml + '</div>' +
+        '<div class="sec"><h3>Equipa (' + (j.crew || []).length + ')</h3><div class="crew">' + crewHtml + '</div></div>';
+    }).catch(function () {
+      document.getElementById('pw').innerHTML = '<p class="empty">Não consegui carregar este projeto.</p>';
+    });
+
+    return 'project-ok';
+  }
+
   var TODAY = keyOf(new Date());
   // utilizador normal (equipa) so ve quem tem marcacao, sem poder desligar isso
   var forceOnly = cfg.role === 'video';
@@ -370,11 +422,34 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
     var h = '<div class="sh-h" style="--h:' + hue(e.code) + '"><h3>' + esc(e.event || 'OS ' + e.code) + '</h3><p>OS ' + esc(e.osFull) + '</p></div><dl>' +
       (e.client ? '<dt>Cliente / local</dt><dd>' + esc(e.client) + '</dd>' : '') +
       (e.hor ? '<dt>Horário</dt><dd>' + esc(e.hor) + '</dd>' : '') +
-      '</dl>' + pdfButton(e) + '<dl><dt>Equipa neste período</dt></dl><ul class="crewlist">';
+      '</dl>' + pdfButton(e) + shareButton(e) + '<dl><dt>Equipa neste período</dt></dl><ul class="crewlist">';
     list.forEach(function (c) {
       h += '<li>' + avatar(c.p, 30) + '<div><b>' + esc(c.p.name) + '</b><small>' + esc(c.p.grupo) + ' · ' + esc(ranges(c.days)) + '</small></div></li>';
     });
     openSheet(h + '</ul>');
+    var sb = document.getElementById('shareBtn');
+    if (sb) sb.onclick = function () { shareProject(e, sb); };
+  }
+
+  // botao "Partilhar": so para quem gere gente (admin/full admin/dono), so na versao web
+  function shareButton(e) {
+    if (!cfg.api || !cfg.role || cfg.role === 'video') return '';
+    return '<button class="pdf share" id="shareBtn"><span>LINK</span>Partilhar só este projeto</button>';
+  }
+
+  function shareProject(e, btn) {
+    btn.disabled = true; var was = btn.innerHTML; btn.innerHTML = '<span>LINK</span>A gerar…';
+    fetch(cfg.api + '/api/admin/share', {
+      method: 'POST', headers: { 'X-PIN': cfg.pin, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: sig(e), label: e.event || ('OS ' + e.code) })
+    }).then(function (r) { return r.json(); }).then(function (j) {
+      btn.disabled = false; btn.innerHTML = was;
+      if (!j.token) { alert(j.error || 'Não consegui criar o link.'); return; }
+      var url = location.origin + location.pathname + '?p=' + j.token;
+      var copied = false;
+      try { if (navigator.clipboard) { navigator.clipboard.writeText(url); copied = true; } } catch (err) {}
+      alert((copied ? 'Link copiado (válido 30 dias):\n\n' : 'Link (válido 30 dias):\n\n') + url);
+    }).catch(function () { btn.disabled = false; btn.innerHTML = was; alert('Sem ligação ao servidor.'); });
   }
 
   function pdfUrl(e) {
@@ -515,6 +590,7 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
     '.sh-h{border-left:4px solid hsl(var(--h) 60% 50%);padding-left:12px;margin-right:40px}.sh-h h3,.sh-p h3{margin:0;font-size:19px}.sh-h p,.sh-p p{margin:3px 0 0;color:var(--mut)}',
     'dl{margin:16px 0 0}dt{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin-top:12px}dd{margin:3px 0 0}',
     '.pdf{display:flex;align-items:center;gap:10px;margin:16px 0 4px;padding:11px 14px;border-radius:10px;background:linear-gradient(135deg,#1246E6,var(--acc));color:#fff;text-decoration:none;font-weight:600}.pdf span{font-size:10px;letter-spacing:.08em;background:rgba(255,255,255,.2);border-radius:5px;padding:3px 6px}.pdf:active{opacity:.85}',
+    '.pdf.share{background:var(--soft);color:var(--ink);width:100%;border:1px dashed var(--line)}.pdf.share span{background:hsl(200 70% 50% / .18);color:var(--acc)}.pdf.share:disabled{opacity:.6}',
     '.pdfs{flex:none;display:inline-flex;align-items:center;font-size:10px;font-weight:700;letter-spacing:.08em;color:#fff;background:linear-gradient(135deg,#1246E6,var(--acc));border-radius:6px;padding:4px 8px;text-decoration:none;margin-left:auto}.hr{display:flex;flex-direction:column;align-items:flex-end;gap:6px}.tap{cursor:pointer}.run.os .pdfs{align-self:center}',
     '.crewlist{list-style:none;padding:0;margin:8px 0 0}.crewlist li{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}.crewlist div{display:flex;flex-direction:column}.crewlist small{color:var(--mut);font-size:12px}',
     '.sh-p{display:flex;gap:14px;align-items:center;margin-right:40px}.mut{color:var(--mut)}',

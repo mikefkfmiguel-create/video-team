@@ -202,8 +202,11 @@
       return r.json();
     }).then(function (res) {
       var items = res.items || [], myRank = RANK[res.myRole] || 0;
-      var groups = { pending: [], approved: [], other: [] };
-      items.forEach(function (it) { (groups[it.status] || groups.other).push(it); });
+      var groups = { pending: [], approved: [], projects: [], other: [] };
+      items.forEach(function (it) {
+        if (it.status === 'approved' && it.role === 'project') groups.projects.push(it);
+        else (groups[it.status] || groups.other).push(it);
+      });
       var html = '';
       html += section('A aguardar aprovação', groups.pending, function (it) {
         var b = actBtn(it.token, 'deny', 'no', 'Recusar');
@@ -214,9 +217,12 @@
       html += section('Com acesso', groups.approved, function (it) {
         var badge = ROLE_LABEL[it.role] ? '<span class="badge">' + ROLE_LABEL[it.role] + '</span>' : '';
         // so revoga quem estiver estritamente abaixo do teu nivel
-        var canRevoke = RANK[it.role || 'video'] < myRank;
+        var canRevoke = (RANK[it.role || 'video'] || 0) < myRank;
         return badge + (canRevoke ? actBtn(it.token, 'revoke', 'no', 'Revogar') : '');
       }, 'Ainda ninguém.', function (it) { return it.expiresAt ? ' · expira ' + when(it.expiresAt) : ''; });
+      html += section('Projetos partilhados', groups.projects, function (it) {
+        return actBtn(it.token, 'revoke', 'no', 'Revogar');
+      }, 'Nenhum ainda — abre um trabalho na escala e usa "Partilhar".', function (it) { return it.expiresAt ? ' · expira ' + when(it.expiresAt) : ''; });
       document.getElementById('lists').innerHTML = html;
       document.querySelectorAll('[data-act]').forEach(function (b) {
         b.onclick = function () {
@@ -252,6 +258,12 @@
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
 
   document.addEventListener('DOMContentLoaded', function () {
+    // link de um projeto partilhado (?p=token): fica gravado e tira o token da barra de endereco
+    var shared = /[?&]p=([^&]+)/.exec(location.search);
+    if (shared) {
+      set('vt.pin', decodeURIComponent(shared[1])); set('vt.reqtoken', null); set('vt.reqname', null);
+      history.replaceState(null, '', location.pathname);
+    }
     var pin = get('vt.pin');
     if (pin) {
       fetch(API + '/api/ping', { headers: { 'X-PIN': pin } }).then(function (r) { return r.json(); }).then(function (j) {

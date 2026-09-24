@@ -164,7 +164,11 @@ function nameFromEmail(email) {
 //   owner     - a tua chave fixa (VT_PIN_ADMIN). Gere tudo, incluindo fulladmins. Nunca expira.
 const ACCESS_TTL = 12 * 3600; // equipa: 12 horas
 const ADMIN_TTL = 30 * 24 * 3600; // admin e fulladmin aprovados por um nivel acima: 30 dias
+const PROJECT_TTL = 30 * 24 * 3600; // link de projeto partilhado: 30 dias
 const RANK = { video: 0, admin: 1, fulladmin: 2, owner: 3 };
+
+// mesma assinatura que o app.js usa do lado do browser, para casar uma marcacao a um projeto
+const sigOf = (e) => `${e.kind}:${e.code}:${e.event || ''}`;
 
 async function handleRequest(req, env, h) {
   const body = await readJson(req);
@@ -210,6 +214,19 @@ async function handleAdmin(url, req, env, h, myRole) {
     items.sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9) || b.requestedAt - a.requestedAt);
     // ate onde este nivel pode ir, para a pagina saber que botoes mostrar
     return json({ items, myRole, canGrantUpTo: myRank > 0 ? Object.keys(RANK).find((r) => RANK[r] === myRank - 1) : null }, 200, h);
+  }
+  // gera um link para um so projeto (trabalho), sem passar pelo pedido/aprovacao normal —
+  // quem faz login como admin (ou acima) decide partilhar, e o link ja nasce aprovado
+  if (url.pathname === '/api/admin/share' && req.method === 'POST') {
+    const body = await readJson(req);
+    const key = String((body && body.key) || '');
+    const label = String((body && body.label) || key).slice(0, 120);
+    if (!key) return json({ error: 'projeto invalido' }, 400, h);
+    const token = randomToken();
+    const now = Date.now();
+    const entry = { name: label, project: key, role: 'project', status: 'approved', requestedAt: now, approvedAt: now, expiresAt: now + PROJECT_TTL * 1000 };
+    await env.FOTOS.put(`req:${token}`, JSON.stringify(entry), { expirationTtl: PROJECT_TTL });
+    return json({ token }, 200, h);
   }
   const m = url.pathname.match(/^\/api\/admin\/(approve|deny|revoke)$/);
   if (m && req.method === 'POST') {
@@ -257,6 +274,31 @@ function forRole(data, role) {
   return role === 'video' ? { ...data, people: data.people.filter(isVideo) } : data;
 }
 
+// vista de um projeto so: recalcula a equipa/dias na hora, a partir da escala atual —
+// nunca fica desatualizado, mesmo que o 7Eventos mude a equipa depois do link ser criado
+async function projectView(env, entry) {
+  const data = await getEscala(env, todayDMY());
+  const key = entry.project;
+  let meta = null;
+  const crew = [];
+  for (const p of data.people) {
+    const days = [];
+    for (const day of Object.keys(p.cells)) {
+      const hit = p.cells[day].find((e) => sigOf(e) === key);
+      if (hit) { days.push(day); if (!meta) meta = hit; }
+    }
+    if (days.length) crew.push({ id: p.id, name: p.name, foto: p.foto, grupo: p.grupo, days: days.sort() });
+  }
+  if (!meta) return null;
+  crew.sort((a, b) => a.name.localeCompare(b.name, 'pt'));
+  return {
+    label: entry.name, key,
+    code: meta.code, event: meta.event, client: meta.client, hor: meta.hor, prop: meta.prop,
+    days: [...new Set(crew.flatMap((c) => c.days))].sort(),
+    crew,
+  };
+}
+
 export default {
   // cron: mantem a escala de hoje quente para ninguem esperar pelo 7Eventos
   async scheduled(_ev, env, ctx) {
@@ -289,6 +331,20 @@ export default {
       if (!role) {
         await new Promise((r) => setTimeout(r, 800)); // trava tentativas em serie
         return json({ error: 'pin' }, 401, h);
+      }
+
+      // /api/projeto -> so quem tem um link de projeto (role 'project') passa por aqui
+      if (url.pathname === '/api/projeto') {
+        if (role !== 'project') return json({ error: 'nao e um link de projeto' }, 400, h);
+        const entry = await env.FOTOS.get(`req:${pin}`, 'json');
+        const view = entry && (await projectView(env, entry));
+        if (!view) return json({ error: 'este projeto ja nao tem marcações neste período' }, 404, h);
+        return json(view, 200, h);
+      }
+
+      // um link de projeto so serve para /api/projeto e para a sua propria proposta/fotos
+      if (role === 'project' && (url.pathname === '/api/escala' || url.pathname === '/api/fotos')) {
+        return json({ error: 'sem acesso' }, 403, h);
       }
 
       // /api/escala?d=dd-mm-yyyy
@@ -335,6 +391,11 @@ export default {
           const data = forRole(await getEscala(env, d), role);
           const ok = data.people.some((p) => Object.values(p.cells).some((l) => l.some((e) => e.prop === id)));
           if (!ok) return json({ error: 'sem acesso a esta proposta' }, 403, h);
+        } else if (role === 'project') {
+          // um link de projeto so abre a proposta desse mesmo projeto
+          const entry = await env.FOTOS.get(`req:${pin}`, 'json');
+          const view = entry && (await projectView(env, entry));
+          if (!view || view.prop !== id) return json({ error: 'sem acesso a esta proposta' }, 403, h);
         }
         const key = new Request(`https://cache.videoteam/pdf/${id}`);
         let pdf = await caches.default.match(key);
