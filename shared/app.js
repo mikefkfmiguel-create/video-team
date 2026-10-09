@@ -526,14 +526,46 @@
     if (sb) sb.onclick = function () { shareProject(e, sb); };
     var slb = document.getElementById('salasBtn');
     if (slb) slb.onclick = function () {
-      document.getElementById('sheet').classList.remove('open');
-      window.__vtSalas.abrir({ api: cfg.api, pin: cfg.pin, sig: sig(e), titulo: e.event || ('OS ' + e.code), evento: e.event, code: e.code, anchor: state.dmy });
+      var ctxSalas = function (pin) {
+        document.getElementById('sheet').classList.remove('open');
+        window.__vtSalas.abrir({
+          api: cfg.api || cfg.salasApi, pin: pin, sig: sig(e), titulo: e.event || ('OS ' + e.code), evento: e.event, code: e.code, anchor: state.dmy,
+          onAuthFail: cfg.api ? null : function () { store('vt.salaspin', ''); }
+        });
+      };
+      if (cfg.api) ctxSalas(cfg.pin); else withSalasPin(ctxSalas);
+    };
+  }
+
+  // PC/Android: o editor fala com o Worker com a chave do dono, pedida uma vez e guardada neste aparelho.
+  // Nao se usa prompt(): nao existe no Electron nem no WebView.
+  function withSalasPin(cb) {
+    var saved = recall('vt.salaspin');
+    if (saved) { cb(saved); return; }
+    var sh = document.getElementById('sheet');
+    sh.querySelector('.sb').innerHTML = '<div class="sh-h" style="--h:210"><h3>Chave do dono</h3><p>Só o dono edita a equipa por sala. Fica guardada neste aparelho.</p></div>' +
+      '<form id="spForm" style="margin-top:16px;display:flex;flex-direction:column;gap:10px"><input id="spIn" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" style="height:42px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);padding:0 12px;font:inherit">' +
+      '<button class="pdf" style="border:0;cursor:pointer;justify-content:center">Entrar</button><div id="spErr" class="mut"></div></form>';
+    sh.classList.add('open');
+    var f = document.getElementById('spForm'), inp = document.getElementById('spIn');
+    inp.focus();
+    f.onsubmit = function (ev) {
+      ev.preventDefault();
+      var pin = inp.value.trim(), err = document.getElementById('spErr');
+      if (!pin) return;
+      err.textContent = 'a verificar…';
+      fetch(cfg.salasApi + '/api/ping', { headers: { 'X-PIN': pin } }).then(function (r) { return r.json(); }).then(function (j) {
+        if (j.role !== 'owner') { err.textContent = 'Chave errada.'; return; }
+        store('vt.salaspin', pin);
+        cb(pin);
+      }).catch(function () { err.textContent = 'Sem ligação ao servidor.'; });
     };
   }
 
   // botao "Equipa por sala": so o dono (chave fixa), so quando o editor esta carregado
   function salasButton(e) {
-    if (!cfg.api || cfg.role !== 'owner' || !window.__vtSalas || e.kind === 'inc') return '';
+    var ok = cfg.api ? cfg.role === 'owner' : !!cfg.salasApi;
+    if (!ok || !window.__vtSalas || e.kind === 'inc') return '';
     return '<button class="pdf share" id="salasBtn"><span>SALAS</span>Equipa por sala e função</button>';
   }
 

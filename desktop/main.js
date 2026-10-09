@@ -7,6 +7,9 @@ const START = ORIGIN + '/7Eventos/EscalasTecnicos/GetPeriodoJS';
 const read = (f) => fs.readFileSync(path.join(__dirname, f), 'utf8');
 const LOGIN_JS = read('login.js');
 const APP_JS = read('app.js');
+// editor «Equipa por sala» (motor + ecra), carregado antes do app.js
+const SALAS_JS = read('salas-motor.js') + '\n;' + read('salas.js');
+const SALAS_API = 'https://video-team.avkvideoshare.workers.dev';
 
 function configDir() {
   if (process.env.PORTABLE_EXECUTABLE_DIR) return process.env.PORTABLE_EXECUTABLE_DIR;
@@ -47,7 +50,7 @@ function createWindow(cfg) {
 
   let loginAttempts = 0;
   const loginCfg = JSON.stringify({ user: cfg.user, password: cfg.password });
-  const appCfg = JSON.stringify({ search: cfg.search || 'video' });
+  const appCfg = JSON.stringify({ search: cfg.search || 'video', salasApi: SALAS_API });
 
   win.webContents.on('dom-ready', async () => {
     const url = win.webContents.getURL();
@@ -62,6 +65,7 @@ function createWindow(cfg) {
         }
       } else if (url.startsWith(START)) {
         loginAttempts = 0;
+        await win.webContents.executeJavaScript(SALAS_JS);
         await win.webContents.executeJavaScript(`(${APP_JS})(${appCfg})`);
       }
     } catch (e) {

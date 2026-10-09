@@ -7,7 +7,7 @@
   "author": "Mike",
   "license": "UNLICENSED",
   "scripts": {
-    "sync": "node -e \"for (const f of ['login.js','app.js']) require('fs').copyFileSync('../shared/'+f, f)\"",
+    "sync": "node -e \"for (const f of ['login.js','app.js','salas-motor.js','salas.js']) require('fs').copyFileSync('../shared/'+f, f)\"",
     "prestart": "npm run sync",
     "start": "electron .",
     "predist": "npm run sync",
@@ -20,6 +20,8 @@
       "main.js",
       "login.js",
       "app.js",
+      "salas-motor.js",
+      "salas.js",
       "icon.ico",
       "package.json"
     ],

@@ -88,7 +88,11 @@
     function carregar(fresh) {
       S.status = 'a carregar…'; S.statusErr = false; S.loadErr = null; paint();
       return H('/api/admin/sala?key=' + encodeURIComponent(ctx.sig) + '&d=' + encodeURIComponent(ctx.anchor || '') + (fresh ? '&fresh=1' : '')).then(function (r) {
-        return r.json().then(function (j) { if (!r.ok) throw new Error(r.status === 403 ? 'Só o dono pode editar.' : (j.error || 'Erro ' + r.status)); return j; });
+        return r.json().then(function (j) {
+          if (r.status === 401 && ctx.onAuthFail) ctx.onAuthFail();
+          if (!r.ok) throw new Error(r.status === 403 ? 'Só o dono pode editar.' : r.status === 401 ? 'Chave errada ou expirada — fecha e volta a abrir.' : (j.error || 'Erro ' + r.status));
+          return j;
+        });
       }).then(function (j) {
         S.crew = (j.crew && j.crew.crew) || [];
         if (j.doc) { S.doc = j.doc; S.rev = j.doc.rev || 0; }

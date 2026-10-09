@@ -18,11 +18,13 @@ class MainActivity : Activity() {
     companion object {
         const val HOST = "7eventos.avk.pt"
         const val START = "http://$HOST/7Eventos/EscalasTecnicos/GetPeriodoJS"
+        const val SALAS_API = "https://video-team.avkvideoshare.workers.dev"
     }
 
     private lateinit var web: WebView
     private lateinit var loginJs: String
     private lateinit var appJs: String
+    private lateinit var salasJs: String
     private var loginAttempts = 0
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -30,6 +32,9 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         loginJs = assets.open("login.js").bufferedReader().use { it.readText() }
         appJs = assets.open("app.js").bufferedReader().use { it.readText() }
+        // editor «Equipa por sala» (motor + ecra), carregado antes do app.js
+        salasJs = assets.open("salas-motor.js").bufferedReader().use { it.readText() } + "\n;" +
+            assets.open("salas.js").bufferedReader().use { it.readText() }
 
         web = WebView(this)
         setContentView(web)
@@ -75,7 +80,8 @@ class MainActivity : Activity() {
             }
             url.startsWith(START) -> {
                 loginAttempts = 0
-                val cfg = JSONObject().put("search", BuildConfig.VT_SEARCH)
+                val cfg = JSONObject().put("search", BuildConfig.VT_SEARCH).put("salasApi", SALAS_API)
+                web.evaluateJavascript(salasJs, null)
                 web.evaluateJavascript("($appJs)($cfg)", null)
             }
         }
