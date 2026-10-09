@@ -55,7 +55,8 @@
     '#vtsl-md h3{margin:0 0 4px;font-size:17px}#vtsl-md h5{margin:14px 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}',
     '#vtsl-md .ch{display:flex;flex-wrap:wrap;gap:6px}#vtsl-md .ch button{padding:8px 13px;border-radius:999px;border:1px solid var(--line);background:var(--soft);color:var(--ink);font:inherit;cursor:pointer}#vtsl-md .ch button.on{background:var(--acc);color:#fff;border-color:var(--acc)}',
     '#vtsl-md .ac{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}#vtsl-md .ac button{height:38px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:inherit;cursor:pointer}#vtsl-md .ac button.pri{background:linear-gradient(135deg,#1246E6,var(--acc));color:#fff;border:0;font-weight:600}',
-    '#vtsl-md .mut{color:var(--mut);font-size:12px}'
+    '#vtsl-md .mut{color:var(--mut);font-size:12px}',
+    '#vtsl-md select,#vtsl-md input[type=month]{height:34px;max-width:100%;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);padding:0 8px;font:inherit}'
   ].join('\n');
 
   function abrir(ctx) {
@@ -273,7 +274,10 @@
       }).join('') + '</div>';
       h += '<h4>Link «Escala do Evento»</h4><div class="ln"><label class="ck"><input type="checkbox" data-publicar' + (d.link.publicado ? ' checked' : '') + '> Mostrar sala e função no link (só consulta)</label></div>' +
         '<p class="note">Desligado por defeito. Os técnicos só veem sala e função, nunca os avisos nem a configuração. O link cria-se em «Partilhar só este projeto» no painel do evento.</p>';
-      h += '<h4>Exportar</h4><div class="ln"><button class="b" data-a="csv">Descarregar CSV (formato da folha)</button><button class="b" data-a="csv2">CSV para Excel (;)</button></div>';
+      h += '<h4>Exportar e importar</h4><div class="ln"><button class="b" data-a="csv">Descarregar CSV (formato da folha)</button><button class="b" data-a="csv2">CSV para Excel (;)</button>' +
+        '<button class="b" data-a="imprimir">Imprimir / PDF</button></div>' +
+        '<div class="ln"><button class="b" data-a="importar">Importar da folha atual…</button></div>' +
+        '<p class="note">A folha lê-se uma vez, como ponto de partida; depois a fonte passa a ser esta app. Os telefones nunca são lidos.</p>';
       return h + '</div>';
     }
 
@@ -284,8 +288,73 @@
       S.pk = { ids: ids, sala: first ? first.sala : null, f: f, scope: 'dia' };
       paintModal();
     }
+    // ---------- importar da folha ----------
+    function impOpts() { var i = S.imp; return { evento: i.evento, mes: i.mes, tokens: i.tokens, nomes: i.nomes }; }
+
+    function impPreparar(folha) {
+      var i = S.imp, d = S.doc;
+      i.folha = folha; i.tokens = {}; i.nomes = {}; i.fase = 'rever'; i.erro = '';
+      i.mes = d.dias.length ? d.dias[0].slice(0, 7) : '';
+      var evs = M.analisarImport(d, S.crew, folha, {}).eventos, mine = M.norm(d.evento || ctx.evento || '');
+      var best = evs.filter(function (e) { return mine && (mine.indexOf(e.key) >= 0 || e.key.indexOf(mine) >= 0); })[0] || evs[0];
+      i.evento = best ? best.nome : '';
+    }
+
+    function impLer(csv) {
+      S.imp.erro = 'a ler…'; paintModal();
+      H('/api/admin/sala/folha', { body: csv ? { csv: csv } : {} }).then(function (r) {
+        return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || 'Erro ' + r.status); return j; });
+      }).then(function (folha) {
+        if (!S.imp) return;
+        impPreparar(folha); paintModal();
+      }).catch(function (e) { if (S.imp) { S.imp.erro = 'Não consegui ler a folha: ' + (e.message || 'sem ligação') + '. Podes colar o CSV abaixo.'; paintModal(); } });
+    }
+
+    function paintImport() {
+      var i = S.imp, d = S.doc, h = '<div class="mp"><h3>Importar da folha atual</h3>';
+      if (i.fase === 'ler') {
+        h += '<p class="mut">Lê a folha uma vez, como ponto de partida. Só entram os técnicos e os dias; telefones e contactos são descartados.</p>' +
+          '<div class="ac"><button class="pri" data-ia="ler">Ler a folha do Google</button><button data-ia="x">Cancelar</button></div>' +
+          '<h5>Ou cola aqui o CSV exportado</h5><textarea id="slCsv" rows="4" style="width:100%;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit;padding:8px" placeholder="TECNICO,13,14,15…"></textarea>' +
+          '<div class="ac"><button data-ia="colar">Usar o CSV colado</button></div>' +
+          (i.erro ? '<p class="mut">' + esc(i.erro) + '</p>' : '');
+        md.innerHTML = h + '</div>'; md.style.display = 'flex'; return;
+      }
+      var an = M.analisarImport(d, S.crew, i.folha, impOpts());
+      var eq = M.equipa(d, S.crew).slice().sort(function (a, b) { return a.name.localeCompare(b.name, 'pt'); });
+      h += '<h5>Evento na folha</h5><div class="ch"><select data-ie="evento">' + M.analisarImport(d, S.crew, i.folha, {}).eventos.map(function (e) {
+        return '<option value="' + esc(e.nome) + '"' + (M.norm(e.nome) === M.norm(i.evento) ? ' selected' : '') + '>' + esc(e.nome) + ' (' + e.n + ' células)</option>';
+      }).join('') + '</select> <span class="mut">mês dos dias:</span> <input type="month" data-ie="mes" value="' + esc(i.mes) + '"></div>' +
+        '<p class="mut">A folha só tem o número do dia: confirma o mês. Dias fora dos do evento (' + an.stats.foraDias + ') são ignorados.</p>';
+      if (an.tokens.length) {
+        h += '<h5>Siglas por classificar (' + an.tokens.length + ')</h5>';
+        an.tokens.forEach(function (t) {
+          var cur = i.tokens[t.key] || t.sug;
+          var opts = [['s', 'Sala nova'], ['f', 'Função nova'], ['x', 'Ignorar']]
+            .concat(d.salas.map(function (s) { return ['s:' + s.id, '= sala ' + s.nome]; }))
+            .concat(d.funcoes.map(function (f) { return ['f:' + f.id, '= função ' + f.nome]; }));
+          h += '<div class="ln" style="display:flex;gap:8px;align-items:center;margin-bottom:6px"><b style="min-width:90px">' + esc(t.texto) + '</b><span class="mut">' + t.n + '×</span><select data-it="' + esc(t.key) + '">' +
+            opts.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (o[0] === cur ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select></div>';
+        });
+      }
+      var dev = an.nomes.filter(function (n) { return !n.id || n.origem === 'aproximado' || n.ignorar; });
+      var ok = an.nomes.length - dev.length;
+      h += '<h5>Nomes (' + an.nomes.length + ')</h5><p class="mut">' + ok + ' casados com a escala oficial sem dúvidas.' + (dev.length ? ' Confirma estes:' : '') + '</p>';
+      dev.forEach(function (n) {
+        var cur = n.ignorar ? '' : n.id || '';
+        h += '<div class="ln" style="display:flex;gap:8px;align-items:center;margin-bottom:6px"><b style="min-width:110px">' + esc(n.nome) + '</b><select data-in="' + esc(n.key) + '"><option value="">' + (n.id || n.ignorar ? 'Ignorar' : '— escolher —') + '</option>' +
+          eq.map(function (p) { return '<option value="' + esc(p.id) + '"' + (p.id === cur ? ' selected' : '') + '>' + esc(p.name) + (n.candidatos.indexOf(p.id) >= 0 ? ' ★' : '') + '</option>'; }).join('') + '</select></div>';
+      });
+      var sem = an.nomes.filter(function (n) { return !n.id && !n.ignorar; }).length;
+      h += '<p class="mut">' + an.stats.celulas + ' células a importar.' + (sem ? ' ' + sem + ' nome(s) sem correspondência ficam de fora.' : '') + ' Substitui o destino de quem a folha preenche; o resto fica como está.</p>' +
+        '<div class="ac"><button class="pri" data-ia="aplicar"' + (i.evento && an.stats.celulas ? '' : ' disabled') + '>Importar</button><button data-ia="x">Cancelar</button></div>';
+      md.innerHTML = h + '</div>'; md.style.display = 'flex';
+    }
+
     function paintModal() {
       var pk = S.pk;
+      if (S.imp) { paintImport(); return; }
+      if (!pk && S.ask) return;
       if (!pk) { md.style.display = 'none'; md.innerHTML = ''; return; }
       var d = S.doc;
       var nomes = pk.ids.slice(0, 3).map(nome).join(', ') + (pk.ids.length > 3 ? ' +' + (pk.ids.length - 3) : '');
@@ -305,8 +374,33 @@
       md.style.display = 'flex';
     }
 
+    md.addEventListener('change', function (ev) {
+      var t = ev.target, i = S.imp;
+      if (!i || i.fase !== 'rever') return;
+      if (t.dataset.ie === 'evento') i.evento = t.value;
+      else if (t.dataset.ie === 'mes') i.mes = t.value;
+      else if (t.dataset.it) i.tokens[t.dataset.it] = t.value;
+      else if (t.dataset.in) i.nomes[t.dataset.in] = t.value;
+      else return;
+      var sc = md.querySelector('.mp').scrollTop; paintModal(); md.querySelector('.mp').scrollTop = sc;
+    });
+
     md.addEventListener('click', function (ev) {
       var t = ev.target;
+      if (S.imp) {
+        var b = t.closest && t.closest('button');
+        if (t === md || (b && b.dataset.ia === 'x')) { S.imp = null; paintModal(); return; }
+        if (!b || !b.dataset.ia) return;
+        if (b.dataset.ia === 'ler') impLer(null);
+        else if (b.dataset.ia === 'colar') { var txt = (document.getElementById('slCsv') || {}).value || ''; if (txt.trim()) impLer(txt); }
+        else if (b.dataset.ia === 'aplicar') {
+          antes();
+          var res = M.aplicarImport(S.doc, S.crew, S.imp.folha, impOpts());
+          S.imp = null; mudou();
+          perguntar('Importados ' + res.atribuicoes + ' destinos de ' + res.pessoas + ' pessoas.' + (res.semNome ? ' ' + res.semNome + ' nome(s) sem correspondência ficaram de fora.' : '') + ' Podes anular.', [{ t: 'OK', pri: true }], function () {});
+        }
+        return;
+      }
       if (t === md) { S.pk = null; S.ask = null; paintModal(); return; }
       t = t.closest('button'); if (!t || !S.pk && !S.ask) return;
       if (S.ask && t.dataset.ask != null) { var cb = S.ask; S.ask = null; md.style.display = 'none'; cb(+t.dataset.ask); return; }
@@ -328,10 +422,19 @@
     });
 
     // ---------- eventos ----------
-    function download(txt, name) {
-      var url = URL.createObjectURL(new Blob(['﻿' + txt], { type: 'text/csv;charset=utf-8' }));
-      var a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click();
-      setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 1000);
+    // CSV/pagina de impressao: o Worker guarda 10 min e devolve um link que se abre no browser do sistema
+    // (no Android e no exe nao ha download de blobs nem window.print dentro da app)
+    function abrirFicheiro(tipo, nome, conteudo) {
+      S.status = 'a preparar o ficheiro…'; S.statusErr = false; paint();
+      H('/api/admin/sala/ficheiro', { body: { tipo: tipo, nome: nome, conteudo: conteudo } }).then(function (r) {
+        return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || 'Erro ' + r.status); return j; });
+      }).then(function (j) {
+        var a = document.createElement('a'); a.href = j.url; a.target = '_blank'; a.rel = 'noopener';
+        document.body.appendChild(a); a.click(); a.remove();
+        S.status = 'ficheiro aberto'; paint();
+      }).catch(function (e) {
+        S.status = 'não consegui preparar o ficheiro (' + (e.message || 'sem ligação') + ')'; S.statusErr = false; paint();
+      });
     }
     function slug(s) { return M.norm(s).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'evento'; }
 
@@ -396,8 +499,10 @@
         if (d.dias.indexOf(dv) < 0) { antes(); d.dias.push(dv); d.dias.sort(); mudou(); }
       }
       else if (a === 'csv' || a === 'csv2') {
-        download(M.paraCsv(d, S.crew, a === 'csv2' ? ';' : ','), 'equipa-' + slug(d.evento || ctx.titulo) + '.csv');
+        abrirFicheiro('csv', 'equipa-' + slug(d.evento || ctx.titulo) + '.csv', '﻿' + M.paraCsv(d, S.crew, a === 'csv2' ? ';' : ','));
       }
+      else if (a === 'imprimir') abrirFicheiro('html', 'equipa-' + slug(d.evento || ctx.titulo) + '.html', M.paraHtml(d, S.crew));
+      else if (a === 'importar') { S.imp = { fase: 'ler', erro: '' }; paintModal(); }
     });
 
     // campos de configuracao: gravam ao sair do campo (nao a cada tecla, para nao perder o foco)

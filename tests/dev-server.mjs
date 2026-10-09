@@ -39,7 +39,7 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; ch
 
 http.createServer(async (req, res) => {
   const u = new URL(req.url, `http://localhost:${PORT}`);
-  if (u.pathname.startsWith('/api/') || u.pathname.startsWith('/foto/') || u.pathname.startsWith('/pdf/')) {
+  if (u.pathname.startsWith('/api/') || u.pathname.startsWith('/foto/') || u.pathname.startsWith('/pdf/') || u.pathname.startsWith('/dl/')) {
     const chunks = []; for await (const c of req) chunks.push(c);
     const r = await worker.fetch(new Request(u, { method: req.method, headers: req.headers, body: ['GET', 'HEAD'].includes(req.method) ? undefined : Buffer.concat(chunks) }), env, { waitUntil() {} });
     res.writeHead(r.status, Object.fromEntries(r.headers)); res.end(Buffer.from(await r.arrayBuffer())); return;

@@ -80,4 +80,67 @@ d2.nomes['2'] = { folha: 'RUI C.' };
 const csv = E.paraCsv(d2, crew);
 assert.equal(csv, 'TECNICO,13,14,15\r\nANA SILVA,"CIÊNCIA, AUDI 1, CAM",,\r\nRUI C.,"CIÊNCIA, RUNNER",,\r\n');
 assert.ok(E.paraCsv(d2, crew, ';').startsWith('TECNICO;13;14;15'));
+// ---------- importar da folha ----------
+const crew3 = [
+  { id: '1', name: 'Ana Silva', grupo: 'Técnicos de Vídeo', days: dias },
+  { id: '2', name: 'Rui Manuel Costa', grupo: 'Técnicos de Vídeo', days: dias },
+  { id: '3', name: 'Marta Lopes', grupo: 'Técnicos de Vídeo', days: dias },
+  { id: '4', name: 'Ana Santos', grupo: 'Técnicos de Vídeo', days: dias },
+  { id: '5', name: 'João Pereira', grupo: 'Técnicos de Vídeo', days: dias },
+];
+const folha = {
+  header: ['9', '10', '13', '14'],
+  rows: [
+    { nome: 'ANA SILVA', cells: ['ESICM, AUDI 1', '', 'CIENCIA, AUDI 1, CAM', 'CIENCIA, AUD 8, SWITCH, AV/VMIX'] },
+    { nome: 'R. COSTA', cells: ['', '', 'CIENCIA, AUD 2', 'CIENCIA, RUNNER'] },
+    { nome: 'MARTA', cells: ['', '', 'CIENCIA, AUD 3, AUD 4', 'CIENCIA'] },
+    { nome: 'ANA', cells: ['', '', 'CIENCIA, RUNNER', ''] },
+    { nome: 'JOAO PEREIRA', cells: ['', '', 'ESICM, AUD 7', ''] },
+  ],
+};
+const di = E.novoDoc({ sig: 's', evento: 'Ciência Viva', crew: crew3 });
+di.dias = [dias[0], dias[1]];
+const opts = { evento: 'CIENCIA', mes: '2026-10' };
+let an = E.analisarImport(di, crew3, folha, opts);
+assert.deepStrictEqual(an.eventos.map((e) => e.key).sort(), ['ciencia', 'esicm']);
+assert.deepStrictEqual(an.tokens.map((t) => t.key).sort(), ['aud 1', 'aud 2', 'aud 3', 'aud 4', 'aud 8', 'switch']);
+assert.equal(an.tokens.find((t) => t.key === 'aud 1').sug, 's');
+assert.equal(an.tokens.find((t) => t.key === 'switch').sug, 'f');
+assert.equal(an.stats.foraDias, 0);
+const porNome = Object.fromEntries(an.nomes.map((n) => [n.nome, n]));
+assert.equal(porNome['ANA SILVA'].id, '1'); assert.equal(porNome['ANA SILVA'].origem, 'exato');
+assert.equal(porNome['R. COSTA'].id, '2'); assert.equal(porNome['R. COSTA'].origem, 'aproximado');
+assert.equal(porNome['MARTA'].id, '3');
+assert.equal(porNome['ANA'].id, null); assert.deepStrictEqual(porNome['ANA'].candidatos.sort(), ['1', '4']); // ambígua: não casa sozinha
+assert.ok(!porNome['JOAO PEREIRA']); // só tem células de outro evento
+
+// aplicar: «SWITCH» é função nova; «ANA» escolhida à mão; o resto automático
+const res = E.aplicarImport(di, crew3, folha, Object.assign({}, opts, { nomes: { ana: '4' } }));
+assert.equal(res.semNome, 0);
+const nome = (id) => (di.salas.find((s) => s.id === id) || {}).nome;
+const ana = E.get(di, '1', dias[0]);
+assert.equal(nome(ana[0].sala), 'AUDI 1');
+assert.deepStrictEqual(ana[0].f, ['f2']); // CAM já existia
+const ana14 = E.get(di, '1', dias[1])[0];
+assert.equal(nome(ana14.sala), 'AUD 8');
+assert.deepStrictEqual(ana14.f.map((f) => di.funcoes.find((x) => x.id === f).nome).sort(), ['AV/VMIX', 'SWITCH']);
+assert.equal(E.get(di, '3', dias[0]).length, 2); // duas salas
+assert.equal(E.get(di, '3', dias[1]).length, 0); // «CIENCIA» sozinho: sem destino
+assert.equal(E.get(di, '2', dias[1])[0].sala, null); // só função (Runner)
+assert.equal(E.get(di, '4', dias[0])[0].f[0], 'f4');
+assert.equal(di.nomes['2'].folha, 'R. COSTA'); // guardado para o export e para reimportar
+// reimportar já não pergunta siglas conhecidas nem nomes casados
+an = E.analisarImport(di, crew3, folha, opts);
+assert.equal(an.tokens.length, 0);
+assert.equal(an.nomes.find((n) => n.nome === 'R. COSTA').origem, 'guardado');
+// o export devolve o nome como está na folha
+assert.ok(E.paraCsv(di, crew3).includes('R. COSTA,'));
+
+// imprimir: uma página por dia, escapado, sem contactos
+const html = E.paraHtml(di, crew3);
+assert.ok(html.includes('AUDI 1') && html.includes('Ana Silva') && html.includes('<script') === false);
+assert.equal((html.match(/class="dia"/g) || []).length, 2);
+const evil = E.novoDoc({ sig: 'x', evento: '<img src=x onerror=alert(1)>', crew: crew3 });
+assert.ok(!E.paraHtml(evil, crew3).includes('<img'));
+
 console.log('motor salas: ok');

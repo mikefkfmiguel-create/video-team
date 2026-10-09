@@ -3,6 +3,8 @@
 // apenas a vista publica (publicView), e so se o dono ligou "publicado".
 // Nunca guarda nem devolve contactos: so ids de tecnicos (7Eventos) e ids de salas/funcoes.
 
+import { BadFolha, DL_TTL, fetchFolha, folhaLimpa, randomToken } from './folha.js';
+
 const DOC_TTL = 400 * 24 * 3600; // renova a cada gravacao
 const BAK_TTL = 30 * 24 * 3600; // copia da versao anterior
 const CREW_TTL = 600; // cache da equipa oficial do evento (s)
@@ -175,6 +177,28 @@ export async function handleSala(url, req, env, h, deps) {
     if (prev) await env.FOTOS.put(`salabak:${id}`, JSON.stringify(prev), { expirationTtl: BAK_TTL });
     await env.FOTOS.put(`sala:${id}`, JSON.stringify(clean), { expirationTtl: DOC_TTL });
     return json({ rev: clean.rev, atualizadoEm: clean.atualizadoEm }, 200, h);
+  }
+  // POST /api/admin/sala/folha {csv?}  -> {header, rows:[{nome, cells}]}; sem csv, vai buscar a folha fixa
+  if (url.pathname === '/api/admin/sala/folha' && req.method === 'POST') {
+    const body = await readJson(req);
+    try {
+      const text = body && typeof body.csv === 'string' ? body.csv.slice(0, 500 * 1024) : await fetchFolha(env);
+      return json(folhaLimpa(text), 200, h);
+    } catch (e) {
+      if (e instanceof BadFolha) return json({ error: e.message }, 400, h);
+      throw e;
+    }
+  }
+  // POST /api/admin/sala/ficheiro {nome, tipo:'csv'|'html', conteudo} -> {url}
+  if (url.pathname === '/api/admin/sala/ficheiro' && req.method === 'POST') {
+    const body = await readJson(req);
+    const tipo = body && body.tipo === 'html' ? 'html' : 'csv';
+    const conteudo = String((body && body.conteudo) || '');
+    if (!conteudo || conteudo.length > 300 * 1024) return json({ error: 'ficheiro invalido' }, 400, h);
+    const nome = String((body && body.nome) || 'equipa').replace(/[^\w.-]+/g, '_').slice(0, 80) || 'equipa';
+    const token = randomToken();
+    await env.FOTOS.put(`dl:${token}`, JSON.stringify({ nome, tipo, conteudo }), { expirationTtl: DL_TTL });
+    return json({ url: `${url.origin}/dl/${token}` }, 200, h);
   }
   return json({ error: 'nada aqui' }, 404, h);
 }

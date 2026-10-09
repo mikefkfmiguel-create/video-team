@@ -7,6 +7,7 @@
 // Variavel: ALLOWED_ORIGINS.
 import { parseEscala } from './parse.js';
 import { handleSala, loadDoc, publicView } from './salas.js';
+import { serveDl } from './folha.js';
 
 const BASE = 'http://7eventos.avk.pt/7Eventos';
 // A escala so e lida do 7Eventos pelo cron (poucas vezes ao dia), pela primeira pessoa
@@ -371,6 +372,10 @@ export default {
       if (url.pathname === '/api/request' && req.method === 'POST') return handleRequest(req, env, h);
       if (url.pathname === '/api/status' && req.method === 'GET') return handleStatus(req, env, h);
 
+      // ficheiros temporarios (exportar/imprimir): o proprio token e o segredo, nao precisam de PIN
+      const dl = url.pathname.match(/^\/dl\/([a-f0-9]{32})$/);
+      if (dl && req.method === 'GET') return serveDl(env, dl[1], h);
+
       if (req.method !== 'GET' && !url.pathname.startsWith('/api/admin/')) return json({ error: 'metodo' }, 405, h);
 
       const pin = req.headers.get('X-PIN') || url.searchParams.get('k');
@@ -381,7 +386,7 @@ export default {
           await new Promise((r) => setTimeout(r, 800));
           return json({ error: 'pin' }, 401, h);
         }
-        return handleAdmin(url, req, env, h, role);
+        return await handleAdmin(url, req, env, h, role);
       }
 
       if (!role) {

@@ -80,4 +80,33 @@ assert.equal(r.body.salas, undefined);
 
 // o link de projeto nao acede ao editor
 assert.equal((await call(q, { pin: 'linkp' })).status, 401);
+// importar a folha: corta a coluna dos contactos e telefones soltos; so o dono
+const csv = ',TECNICO,13,14\n"Chefe Falso   911 849 762",ANA SILVA,"CIENCIA, AUDI 1, CAM",\n,RUI COSTA 912 345 678,,"CIENCIA, RUNNER"\n,,,\n';
+assert.equal((await call('/api/admin/sala/folha', { pin: 'adm', method: 'POST', body: { csv } })).status, 403);
+r = await J(await call('/api/admin/sala/folha', { method: 'POST', body: { csv } }));
+assert.equal(r.status, 200);
+assert.deepEqual(r.body.header, ['13', '14']);
+assert.equal(r.body.rows.length, 2);
+assert.equal(r.body.rows[0].cells[0], 'CIENCIA, AUDI 1, CAM');
+assert.equal(r.body.rows[1].nome, 'RUI COSTA');
+assert.ok(!JSON.stringify(r.body).match(/\d{3} \d{3} \d{3}|Chefe/));
+assert.equal((await call('/api/admin/sala/folha', { method: 'POST', body: { csv: 'a,b\n1,2' } })).status, 400);
+// sem csv vai a rede (bloqueada no teste): nunca acontece em silencio
+assert.equal((await call('/api/admin/sala/folha', { method: 'POST', body: {} })).status, 502);
+
+// ficheiro temporario: cria com PIN, abre sem PIN, expira
+r = await J(await call('/api/admin/sala/ficheiro', { method: 'POST', body: { nome: 'equipa x.csv', tipo: 'csv', conteudo: 'TECNICO,13\r\n' } }));
+assert.equal(r.status, 200);
+const dlPath = new URL(r.body.url).pathname;
+let f = await worker.fetch(new Request('http://w' + dlPath), env, { waitUntil() {} });
+assert.equal(f.status, 200);
+assert.match(f.headers.get('Content-Disposition'), /equipa_x\.csv/);
+assert.equal(await f.text(), 'TECNICO,13\r\n');
+store.delete('dl:' + dlPath.split('/').pop());
+assert.equal((await worker.fetch(new Request('http://w' + dlPath), env, { waitUntil() {} })).status, 404);
+assert.equal((await call('/api/admin/sala/ficheiro', { pin: 'adm', method: 'POST', body: { tipo: 'csv', conteudo: 'x' } })).status, 403);
+r = await J(await call('/api/admin/sala/ficheiro', { method: 'POST', body: { tipo: 'html', conteudo: '<p>x</p>' } }));
+f = await worker.fetch(new Request('http://w' + new URL(r.body.url).pathname), env, { waitUntil() {} });
+assert.match(f.headers.get('Content-Security-Policy'), /default-src 'none'/);
+
 console.log('worker salas: ok');
