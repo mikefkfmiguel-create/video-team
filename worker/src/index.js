@@ -6,6 +6,7 @@
 // secao "pedidos de acesso". Aprovado, expira sozinho ao fim de ACCESS_TTL.
 // Variavel: ALLOWED_ORIGINS.
 import { parseEscala } from './parse.js';
+import { handleSala, loadDoc, publicView } from './salas.js';
 
 const BASE = 'http://7eventos.avk.pt/7Eventos';
 // A escala so e lida do 7Eventos pelo cron (poucas vezes ao dia), pela primeira pessoa
@@ -203,6 +204,11 @@ async function handleStatus(req, env, h) {
 
 async function handleAdmin(url, req, env, h, myRole) {
   const myRank = RANK[myRole] ?? 0;
+  // equipa por sala/funcao: so o dono edita (admins aprovados por email ficam de fora)
+  if (url.pathname.startsWith('/api/admin/sala')) {
+    if (myRole !== 'owner') return json({ error: 'so o dono' }, 403, h);
+    return handleSala(url, req, env, h, { json, readJson, todayDMY, projectView });
+  }
   if (url.pathname === '/api/admin/requests' && req.method === 'GET') {
     const list = await env.FOTOS.list({ prefix: 'req:' });
     const items = [];
@@ -389,6 +395,9 @@ export default {
         const entry = await env.FOTOS.get(`req:${pin}`, 'json');
         const view = entry && (await projectView(env, entry));
         if (!view) return json({ error: 'este projeto ja nao tem marcações neste período' }, 404, h);
+        // sala/funcao so aparece se o dono ligou "publicado" (e so de quem esta na equipa)
+        const pub = publicView(await loadDoc(env, entry.project), view.crew.map((c) => c.id));
+        if (pub) view.salas = pub;
         return json(view, 200, h);
       }
 
