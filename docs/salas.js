@@ -222,7 +222,7 @@
           (bad[s.id] ? '<span class="w">⚠ ' + bad[s.id].map(function (t) { return TIPOS[t].toLowerCase(); }).join(', ') + '</span>' : '') +
           '</h3><div class="rows">' + (l.length ? l.map(row).join('') : '<p class="empty">Ninguém.</p>') + '</div></div>';
       });
-      if (!d.salas.length) h += '<div class="box"><div class="rows"><p class="empty">Ainda não há salas. Toca numa pessoa e cria a sala no seletor, ou usa o separador «Configurar».</p></div></div>';
+      if (!d.salas.length) h += '<div class="box"><div class="rows"><p class="empty">Ainda não há salas. Toca numa pessoa e cria a sala no seletor, ou usa o separador «Configurar».</p><p style="text-align:center;margin:0 0 10px"><button class="b pri" data-a="importar">Criar salas e atribuições a partir da folha…</button></p></div></div>';
       if (semSala.length) h += '<div class="box"><h3>Só função, sem sala <small>(' + semSala.length + ')</small></h3><div class="rows">' + semSala.map(row).join('') + '</div></div>';
       if (fora.length) {
         h += '<div class="box warn"><h3>Fora da escala oficial neste dia <small>(' + fora.length + ')</small></h3><div class="rows">' + fora.map(function (id) {
