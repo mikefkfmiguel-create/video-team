@@ -56,6 +56,7 @@
     '#vtsl-md .ch{display:flex;flex-wrap:wrap;gap:6px}#vtsl-md .ch button{padding:8px 13px;border-radius:999px;border:1px solid var(--line);background:var(--soft);color:var(--ink);font:inherit;cursor:pointer}#vtsl-md .ch button.on{background:var(--acc);color:#fff;border-color:var(--acc)}',
     '#vtsl-md .ac{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}#vtsl-md .ac button{height:38px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:inherit;cursor:pointer}#vtsl-md .ac button.pri{background:linear-gradient(135deg,#1246E6,var(--acc));color:#fff;border:0;font-weight:600}',
     '#vtsl-md .mut{color:var(--mut);font-size:12px}',
+    '#vtsl-md input[type=text]{height:36px;flex:1;min-width:140px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);padding:0 10px;font:inherit}',
     '#vtsl-md select,#vtsl-md input[type=month]{height:34px;max-width:100%;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);padding:0 8px;font:inherit}'
   ].join('\n');
 
@@ -221,7 +222,7 @@
           (bad[s.id] ? '<span class="w">⚠ ' + bad[s.id].map(function (t) { return TIPOS[t].toLowerCase(); }).join(', ') + '</span>' : '') +
           '</h3><div class="rows">' + (l.length ? l.map(row).join('') : '<p class="empty">Ninguém.</p>') + '</div></div>';
       });
-      if (!d.salas.length) h += '<div class="box"><div class="rows"><p class="empty">Ainda não há salas. Vai a «Configurar» e cria as salas deste evento.</p></div></div>';
+      if (!d.salas.length) h += '<div class="box"><div class="rows"><p class="empty">Ainda não há salas. Toca numa pessoa e cria a sala no seletor, ou usa o separador «Configurar».</p></div></div>';
       if (semSala.length) h += '<div class="box"><h3>Só função, sem sala <small>(' + semSala.length + ')</small></h3><div class="rows">' + semSala.map(row).join('') + '</div></div>';
       if (fora.length) {
         h += '<div class="box warn"><h3>Fora da escala oficial neste dia <small>(' + fora.length + ')</small></h3><div class="rows">' + fora.map(function (id) {
@@ -361,7 +362,9 @@
       md.innerHTML = '<div class="mp"><h3>' + esc(nomes) + '</h3><div class="mut">' + esc(fmt(S.day)) + '</div>' +
         '<h5>Sala</h5><div class="ch">' + d.salas.map(function (s) { return '<button data-ps="' + s.id + '" class="' + (pk.sala === s.id ? 'on' : '') + '">' + esc(s.nome) + '</button>'; }).join('') +
         '<button data-ps="" class="' + (!pk.sala ? 'on' : '') + '">— sem sala —</button></div>' +
+        '<div class="ch" style="margin-top:8px"><input type="text" id="slPkSala" placeholder="' + (d.salas.length ? 'Nova sala…' : 'Cria a 1.ª sala, ex. Auditório 1') + '"><button data-pn="s">+ Sala</button></div>' +
         '<h5>Função</h5><div class="ch">' + d.funcoes.map(function (f) { return '<button data-pf="' + f.id + '" class="' + (pk.f[f.id] ? 'on' : '') + '">' + esc(f.nome) + '</button>'; }).join('') + '</div>' +
+        '<div class="ch" style="margin-top:8px"><input type="text" id="slPkFunc" placeholder="Nova função…"><button data-pn="f">+ Função</button></div>' +
         '<h5>Aplicar a</h5><div class="ch"><button data-pc="dia" class="' + (pk.scope === 'dia' ? 'on' : '') + '">Só ' + esc(fmt(S.day)) + '</button><button data-pc="todos" class="' + (pk.scope === 'todos' ? 'on' : '') + '">Todos os dias em que trabalha</button></div>' +
         '<div class="ac"><button class="pri" data-pa="ok">Aplicar</button><button data-pa="limpar">Tirar destino</button><button data-pa="x">Cancelar</button></div></div>';
       md.style.display = 'flex';
@@ -405,6 +408,17 @@
       t = t.closest('button'); if (!t || !S.pk && !S.ask) return;
       if (S.ask && t.dataset.ask != null) { var cb = S.ask; S.ask = null; md.style.display = 'none'; cb(+t.dataset.ask); return; }
       var pk = S.pk; if (!pk) return;
+      if (t.dataset.pn) {
+        // criar sala/funcao aqui mesmo, sem ir a «Configurar»
+        var campo = document.getElementById(t.dataset.pn === 's' ? 'slPkSala' : 'slPkFunc'), nv = campo && campo.value.trim();
+        if (!nv) return;
+        var ds = S.doc;
+        antes();
+        if (t.dataset.pn === 's') { var ns = { id: M.novoId(ds.salas, 's'), nome: nv, curto: nv.toUpperCase(), alias: [], regras: 'herdar' }; ds.salas.push(ns); pk.sala = ns.id; }
+        else { var nf = { id: M.novoId(ds.funcoes, 'f'), nome: nv, curto: nv.toUpperCase(), conta: null, alias: [] }; ds.funcoes.push(nf); pk.f[nf.id] = 1; }
+        mudou();
+        return;
+      }
       if (t.dataset.ps != null) { pk.sala = t.dataset.ps || null; paintModal(); }
       else if (t.dataset.pf) { if (pk.f[t.dataset.pf]) delete pk.f[t.dataset.pf]; else pk.f[t.dataset.pf] = 1; paintModal(); }
       else if (t.dataset.pc) { pk.scope = t.dataset.pc; paintModal(); }
