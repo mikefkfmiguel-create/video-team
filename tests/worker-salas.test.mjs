@@ -1,6 +1,6 @@
-// node worker/test/salas.test.mjs — Worker com KV em memoria e escala falsa (nada de producao)
+// node tests/worker-salas.test.mjs — Worker com KV em memoria e escala falsa (nada de producao)
 import assert from 'node:assert/strict';
-import worker from '../src/index.js';
+import worker from '../worker/src/index.js';
 
 // timingSafeEqual so existe no runtime do Cloudflare
 crypto.subtle.timingSafeEqual ||= (a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)) === 0;
@@ -71,7 +71,7 @@ assert.equal(r.body.doc.link.publicado, true);
 // link do projeto: ve sala/funcao so se publicado, sem lixo
 r = await J(await call('/api/projeto', { pin: 'linkp' }));
 assert.equal(r.status, 200);
-assert.deepEqual(Object.keys(r.body.salas).sort(), ['aloc', 'dias', 'funcoes', 'salas']);
+assert.deepEqual(Object.keys(r.body.salas).sort(), ['aloc', 'dias', 'funcoes', 'grupos', 'salas']);
 assert.deepEqual(Object.keys(r.body.salas.aloc).sort(), ['1', '2']);
 assert.ok(!JSON.stringify(r.body).includes('912 345'));
 r = await save({ ...doc, link: { publicado: false } }, 2);

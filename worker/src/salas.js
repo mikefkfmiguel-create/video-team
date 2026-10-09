@@ -116,6 +116,7 @@ export function publicView(doc, crewIds) {
   for (const t of Object.keys(doc.aloc)) if (ids.has(t)) aloc[t] = doc.aloc[t];
   return {
     dias: doc.dias,
+    grupos: doc.grupos,
     salas: doc.salas.map((s) => ({ id: s.id, nome: s.nome })),
     funcoes: doc.funcoes.map((f) => ({ id: f.id, nome: f.nome })),
     aloc,

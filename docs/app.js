@@ -48,6 +48,8 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
       '.sector{margin-bottom:18px}.sector h4{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}.sector+.sector{margin-top:0}',
       '.crewi{display:flex;align-items:center;gap:10px;background:var(--panel);border-radius:10px;padding:8px 10px;box-shadow:var(--shadow);margin-bottom:8px}.crewi:last-child{margin-bottom:0}.crewi b{font-size:14px;font-weight:600;display:block}.crewi small{color:var(--mut);font-size:12px;display:block;text-transform:capitalize}',
       '.av{position:relative;flex:none;border-radius:50%;overflow:hidden;display:inline-block}.av img,.av .ini{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.av .ini{display:grid;place-items:center;font-size:11px;font-weight:700;background:hsl(var(--h) 45% 88%);color:hsl(var(--h) 45% 30%)}',
+      '.eu{display:flex;align-items:center;gap:8px;margin:0 0 14px;font-size:13px;color:var(--mut)}.eu select{flex:1;min-width:0;height:36px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);padding:0 8px;font:inherit}',
+      '.mine{background:linear-gradient(135deg,var(--acc2),var(--acc));color:#fff;border-radius:14px;padding:14px 16px;margin:0 0 16px;box-shadow:var(--shadow)}.mine small{display:block;opacity:.8;font-size:11px;text-transform:uppercase;letter-spacing:.06em}.mine b{display:block;font-size:19px;margin-top:2px}',
       '.by{margin-top:24px;text-align:center;font-size:11px;letter-spacing:.08em;color:var(--mut);opacity:.7}.by b{font-weight:700}',
       '.empty{color:var(--mut);text-align:center;padding:40px 16px}',
       '.spin{width:26px;height:26px;border:3px solid var(--line);border-top-color:var(--acc);border-radius:50%;margin:40px auto;animation:sp .8s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}'
@@ -84,6 +86,49 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
         }).join('');
       }
 
+      // sala/funcao: so existe se o dono ligou "publicado" para este evento (so consulta)
+      var sv = j.salas || null;
+      function svName(list, id) { var x = (list || []).filter(function (y) { return y.id === id; })[0]; return x ? x.name || x.nome : ''; }
+      function svDests(id, day) { return (sv && sv.aloc[id] && sv.aloc[id][day]) || []; }
+      function svFuncs(ids) { return (ids || []).map(function (f) { return svName(sv.funcoes, f); }).filter(Boolean).join(' + '); }
+      function svText(id, day) {
+        var l = svDests(id, day);
+        return l.length ? l.map(function (x) { return [svName(sv.salas, x.sala), svFuncs(x.f)].filter(Boolean).join(' · '); }).join(' + ') : '';
+      }
+      function bySalaHtml(people) {
+        var g = {}, order = (sv.salas || []).map(function (s) { return s.id; }).concat(['_', '?']);
+        var gr = sv.grupos || [];
+        // quem e de outro setor (fora dos grupos distribuidos) fica a parte, como antes
+        var others = people.filter(function (p) { return gr.length && gr.indexOf(p.grupo) < 0; });
+        people = people.filter(function (p) { return !gr.length || gr.indexOf(p.grupo) >= 0; });
+        people.forEach(function (p) {
+          var l = svDests(p.id, selDay);
+          if (!l.length) (g['?'] = g['?'] || []).push({ p: p, f: '' });
+          else l.forEach(function (x) { (g[x.sala || '_'] = g[x.sala || '_'] || []).push({ p: p, f: svFuncs(x.f) }); });
+        });
+        var h = order.filter(function (k) { return g[k]; }).map(function (k) {
+          var title = k === '_' ? 'Sem sala' : k === '?' ? 'Por atribuir' : svName(sv.salas, k);
+          var rows = g[k].sort(function (a, b) { return a.p.name.localeCompare(b.p.name, 'pt'); }).map(function (o) {
+            return '<div class="crewi">' + avatar(o.p, 36) + '<div><b>' + esc(o.p.name) + '</b>' + (o.f ? '<small>' + esc(o.f) + '</small>' : '') + '</div></div>';
+          }).join('');
+          return '<div class="sector"><h4>' + esc(title) + ' (' + g[k].length + ')</h4>' + rows + '</div>';
+        }).join('');
+        if (others.length) h += bySectorHtml(others.map(function (p) { return Object.assign({}, p, { row: '<div class="crewi">' + avatar(p, 36) + '<b>' + esc(p.name) + '</b></div>' }); }));
+        return h || '<p class="empty">Ninguém marcado.</p>';
+      }
+      function euHtml() {
+        if (!sv) return '';
+        var me = recall('vt.eu.' + (j.key || j.label)), p = crew.filter(function (c) { return c.id === me; })[0];
+        var h = '<div class="eu"><span>Sou</span><select id="eu"><option value="">— escolher o meu nome —</option>' +
+          crew.map(function (c) { return '<option value="' + esc(c.id) + '"' + (c.id === me ? ' selected' : '') + '>' + esc(c.name) + '</option>'; }).join('') + '</select></div>';
+        if (p) {
+            var t = svText(p.id, selDay);
+          h += '<div class="mine"><small>O meu dia · ' + esc(DOW[fromKey(selDay).getDay()] + ' ' + fromKey(selDay).getDate()) + '</small><b>' +
+            ((p.days || []).indexOf(selDay) < 0 ? 'Não estás neste dia' : t ? esc(t) : 'Ainda sem sala atribuída') + '</b></div>';
+        }
+        return h;
+      }
+
       var view = 'dia'; // arranca sempre na vista Dia
       var selDay = allDays.indexOf(todayKey) >= 0 ? todayKey : allDays[0];
 
@@ -96,12 +141,12 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
 
         var body;
         if (view === 'dia') {
-          var todays = crew.filter(function (p) { return (p.days || []).indexOf(selDay) >= 0; })
-            .map(function (p) { return Object.assign({}, p, { row: '<div class="crewi">' + avatar(p, 36) + '<b>' + esc(p.name) + '</b></div>' }); });
+          var todaysRaw = crew.filter(function (p) { return (p.days || []).indexOf(selDay) >= 0; });
+          var todays = todaysRaw.map(function (p) { return Object.assign({}, p, { row: '<div class="crewi">' + avatar(p, 36) + '<b>' + esc(p.name) + '</b></div>' }); });
           var dObj = fromKey(selDay);
           body = '<div class="strip">' + stripHtml + '</div>' +
             '<div class="sec"><h3>' + DOW[dObj.getDay()] + ', ' + dObj.getDate() + ' ' + MON[dObj.getMonth()] + (selDay === todayKey ? ' · hoje' : '') + ' (' + todays.length + ')</h3>' +
-            bySectorHtml(todays) + '</div>';
+            (sv ? bySalaHtml(todaysRaw) : bySectorHtml(todays)) + '</div>';
         } else {
           var all = crew.map(function (p) { return Object.assign({}, p, { row: '<div class="crewi">' + avatar(p, 36) + '<div><b>' + esc(p.name) + '</b><small>' + esc(ranges(p.days || [])) + '</small></div></div>' }); });
           body = '<div class="sec"><h3>Equipa (' + crew.length + ')</h3>' + bySectorHtml(all) + '</div>';
@@ -113,8 +158,10 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
           '<p>' + esc(ranges(allDays)) + '</p>' +
           (j.hor ? '<span class="hor">' + esc(j.hor) + '</span>' : '') + pdfHtml +
           '<div class="seg"><button data-view="dia">Dia</button><button data-view="todos">Todos os dias</button></div></div>' +
-          body;
+          (view === 'dia' ? euHtml() : '') + body;
 
+        var euSel = document.getElementById('eu');
+        if (euSel) euSel.onchange = function () { store('vt.eu.' + (j.key || j.label), euSel.value); paint(); };
         pw.querySelectorAll('.seg button').forEach(function (b) { b.classList.toggle('on', b.dataset.view === view); b.onclick = function () { view = b.dataset.view; paint(); }; });
         if (view === 'dia') pw.querySelectorAll('[data-day]').forEach(function (b) { b.onclick = function () { selDay = b.dataset.day; paint(); }; });
       }
@@ -471,13 +518,24 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
     var h = '<div class="sh-h" style="--h:' + hue(e.code) + '"><h3>' + esc(e.event || 'OS ' + e.code) + '</h3><p>OS ' + esc(e.osFull) + '</p></div><dl>' +
       (e.client ? '<dt>Cliente / local</dt><dd>' + esc(e.client) + '</dd>' : '') +
       (e.hor ? '<dt>Horário</dt><dd>' + esc(e.hor) + '</dd>' : '') +
-      '</dl>' + pdfButton(e) + shareButton(e) + '<dl><dt>Equipa neste período</dt></dl><ul class="crewlist">';
+      '</dl>' + pdfButton(e) + shareButton(e) + salasButton(e) + '<dl><dt>Equipa neste período</dt></dl><ul class="crewlist">';
     list.forEach(function (c) {
       h += '<li>' + avatar(c.p, 30) + '<div><b>' + esc(c.p.name) + '</b><small>' + esc(c.p.grupo) + ' · ' + esc(ranges(c.days)) + '</small></div></li>';
     });
     openSheet(h + '</ul>');
     var sb = document.getElementById('shareBtn');
     if (sb) sb.onclick = function () { shareProject(e, sb); };
+    var slb = document.getElementById('salasBtn');
+    if (slb) slb.onclick = function () {
+      document.getElementById('sheet').classList.remove('open');
+      window.__vtSalas.abrir({ api: cfg.api, pin: cfg.pin, sig: sig(e), titulo: e.event || ('OS ' + e.code), evento: e.event, code: e.code, anchor: state.dmy });
+    };
+  }
+
+  // botao "Equipa por sala": so o dono (chave fixa), so quando o editor esta carregado
+  function salasButton(e) {
+    if (!cfg.api || cfg.role !== 'owner' || !window.__vtSalas || e.kind === 'inc') return '';
+    return '<button class="pdf share" id="salasBtn"><span>SALAS</span>Equipa por sala e função</button>';
   }
 
   // botao "Partilhar": so para quem gere gente (admin/full admin/dono), so na versao web

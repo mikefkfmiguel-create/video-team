@@ -1,8 +1,10 @@
-const CACHE = "videoteam-v18";
+const CACHE = "videoteam-v19";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./app.js",
+  "./salas-motor.js",
+  "./salas.js",
   "./manifest.json",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
