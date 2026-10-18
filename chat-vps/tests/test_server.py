@@ -453,7 +453,19 @@ async def main():
         ok((await api('POST', '/chat/api/admin/prolongar', admin=SEGREDO, corpo={'key': 'nada'}))[0] == 404, 'prolongar uma sala que nao existe: 404')
 
         # ---- expirar
+        wx = await http.ws_connect(B + '/chat/api/ws?k=' + nova['membros'][0]['token'])
+        await asyncio.sleep(0.2)
         chat.bd.x('UPDATE sala SET expira=? WHERE id=?', S.agora_ms() - 1000, nova['sala'])
+        await chat.fechar_ws_expiradas()
+        fim_ws = None
+        for _ in range(20):
+            m_ = await wx.receive(timeout=3)
+            if m_.type == aiohttp.WSMsgType.CLOSE:
+                fim_ws = m_.data
+                break
+            if m_.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+                break
+        ok(fim_ws == 4001, 'no fim do evento as ligacoes em direto da sala sao cortadas (4001): o ecra aberto passa a «link ja nao e valido»')
         ok((await api('GET', '/chat/api/sala', k=nova['membros'][0]['token']))[0] == 401, 'passado o prazo o link deixa de entrar')
         n_ev = chat.bd.um('SELECT COUNT(*) AS n FROM eventos')['n']
         ok(chat.limpar_expiradas(pasta) >= 1 and chat.bd.um("SELECT COUNT(*) AS n FROM eventos WHERE tipo='expirada'")['n'] == 1, 'a limpeza regista «expirada» (apagada sozinha) com a foto do peso')

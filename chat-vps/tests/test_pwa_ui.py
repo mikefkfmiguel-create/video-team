@@ -327,6 +327,7 @@ try:
         admin('/chat/api/admin/remover', {'key': KEY, 'id': '1'})
         ana.wait_for_function("document.getElementById('cTit').textContent.includes('já não é válido')", timeout=30000)
         ok(True, 'retirada da sala, a Ana fica com «link ja nao e valido»')
+        ok(ana.evaluate("document.getElementById('lista').children.length === 0 && document.getElementById('app').hidden && !localStorage.getItem('vt.chat.k')"), 'e nao fica nada da conversa no ecra nem o link guardado no aparelho')
         ok(not erros, 'sem erros na pagina %s' % erros[:2])
         nav.close()
 except Exception:

@@ -439,6 +439,7 @@
   function invalido() {
     fechado = true; try { if (ws) ws.close(); } catch (e) {}
     try { localStorage.removeItem(KEY); } catch (e) {}
+    msgs = []; membros = {}; try { listaEl.textContent = ''; $('fixas').textContent = ''; $('pessoas').textContent = ''; $('app').hidden = true; $('folha').hidden = true; $('grande').hidden = true; $('grandeImg').removeAttribute('src'); } catch (e) {}      // nada da conversa fica no ecra
     cartao('Este link já não é válido', 'O chat foi fechado, o prazo acabou ou foste retirado da sala. Pede um link novo à régie.', true);
   }
 

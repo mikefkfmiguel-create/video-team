@@ -430,6 +430,15 @@ class Chat:
                     log.info('push falhou: %s', res)
 
     # ---- limpeza
+    async def fechar_ws_expiradas(self):
+        """No fim do evento corta as ligacoes em direto das salas que ja expiraram: os ecras abertos passam logo a «link ja nao e valido»."""
+        for r_ in self.bd.q('SELECT id FROM sala WHERE expira < ?', agora_ms()):
+            for (w, _p, _n, _pp) in list(self.ws.get(r_['id'], set())):
+                try:
+                    await w.close(code=4001, message=b'fim do evento')
+                except Exception:
+                    pass
+
     def limpar_expiradas(self, pasta=None):
         ids = [r['id'] for r in self.bd.q('SELECT id FROM sala WHERE expira < ?', agora_ms())]     # acabou o evento: apaga-se tudo
         for i in ids:
@@ -1023,6 +1032,7 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
         async def laco():
             while True:
                 try:
+                    await chat.fechar_ws_expiradas()
                     chat.limpar_expiradas(pasta)
                     chat.gravar_uso()
                 except Exception:
