@@ -169,6 +169,19 @@
 
   // Android (Chrome): o telemovel deixa a pagina escolher contactos (so os que tu marcares, com o teu OK). iPhone nao tem isto: serve o ficheiro.
   var PICKER = !!(typeof navigator !== 'undefined' && navigator.contacts && navigator.contacts.select && typeof window !== 'undefined' && window.isSecureContext);
+  // App Android do Video Team: a app pede a permissao de contactos ao sistema (uma vez) e entrega SO os contactos cujo nome se parece com o da equipa
+  var NAT = (typeof window !== 'undefined' && window.VTNativo && typeof window.VTNativo.lerContactos === 'function') ? window.VTNativo : null;
+  function copiarTexto(tx, feito) {
+    function viaExec() {
+      var ta = document.createElement('textarea'); ta.value = tx; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+      document.body.appendChild(ta); ta.select(); try { ta.setSelectionRange(0, tx.length); } catch (e) {}
+      var ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
+      ta.remove();
+      if (ok) feito(); else window.prompt('Copia:', tx);
+    }
+    try { if (navigator.clipboard && window.isSecureContext) { navigator.clipboard.writeText(tx).then(feito, viaExec); return; } } catch (e) {}
+    viaExec();
+  }
   function dePicker(c) {   // {name:[], tel:[], email:[]} -> {n, k, t:[digitos], e}
     var n = (c.name && c.name[0]) || '', t = [], e = (c.email && c.email[0]) || '';
     (c.tel || []).forEach(function (x) { var f = fone(x); if (f && t.indexOf(f) < 0) t.push(f); });
@@ -289,8 +302,8 @@
     function caixaContactos() {
       var alvo = S.doc && S.vista === 'gerir' ? S.doc.membros.map(function (m) { return { id: m.id, name: m.name }; }) : pessoasVisiveis();
       var com = alvo.filter(function (p) { return eu(p).t; }).length;
-      return '<div class="caixa"><h4>Contactos · ' + com + ' de ' + alvo.length + ' com telemóvel</h4><div class="nota">Os números ficam só neste aparelho. ' + (PICKER ? '<b>O Video Team não vê a tua agenda sozinho: carrega em «Escolher contactos no telemóvel» e, no seletor que abre, usa «Selecionar tudo» (ou marca só a equipa) e confirma. Fica guardado neste aparelho e casa com os nomes da equipa. Para um só, usa o 📇 da pessoa. </b>' : 'No iPhone ou no computador não há acesso direto aos contactos: ') + 'Em contacts.google.com: <b>Exportar → Google CSV</b>, e importa o ficheiro aqui (também serve um .vcf).</div>' +
-        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + (PICKER ? '<button class="b pri" data-acao="pickVarios">Escolher contactos no telemóvel</button>' : '') + '<button class="b' + (PICKER ? '' : ' pri') + '" data-acao="google">Importar do Google Contactos</button>' + '<button class="b" data-acao="importar">Importar ficheiro (.csv / .vcf)</button><input type="file" id="vtch-fich" accept=".csv,.vcf,text/csv,text/vcard,text/x-vcard" hidden>' +
+      return '<div class="caixa"><h4>Contactos · ' + com + ' de ' + alvo.length + ' com telemóvel</h4><div class="nota">Os números ficam só neste aparelho. ' + (NAT ? '<b>Como no WhatsApp: o Android pede-te a permissão de contactos uma vez e depois sincroniza sozinho de cada vez que abres isto. Só são lidos os contactos com nome parecido com o da equipa.</b> ' : PICKER ? '<b>O Video Team não vê a tua agenda sozinho: carrega em «Escolher contactos no telemóvel» e, no seletor que abre, usa «Selecionar tudo» (ou marca só a equipa) e confirma. Fica guardado neste aparelho e casa com os nomes da equipa. Para um só, usa o 📇 da pessoa. </b>' : 'No iPhone ou no computador não há acesso direto aos contactos: ') + 'Em contacts.google.com: <b>Exportar → Google CSV</b>, e importa o ficheiro aqui (também serve um .vcf).</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + (NAT ? '<button class="b pri" data-acao="sincNativo">Sincronizar com os contactos do telemóvel</button>' : '') + (PICKER && !NAT ? '<button class="b pri" data-acao="pickVarios">Escolher contactos no telemóvel</button>' : '') + '<button class="b' + (PICKER || NAT ? '' : ' pri') + '" data-acao="google">Importar do Google Contactos</button>' + '<button class="b" data-acao="importar">Importar ficheiro (.csv / .vcf)</button><input type="file" id="vtch-fich" accept=".csv,.vcf,text/csv,text/vcard,text/x-vcard" hidden>' +
         '<span class="nota" style="margin:0" role="status">' + (S.importou || (S.lista.length ? S.lista.length + ' contactos importados' : 'Ainda sem contactos importados')) + '</span>' +
         (S.lista.length ? '<button class="b perigo" data-acao="limpaContactos">Apagar importados</button>' : '') + '</div>' + (S.pedeCid || S.googleErro ? ajudaGoogle() : '') + '</div>';
     }
@@ -328,14 +341,14 @@
         }
         if (c.e) acoes += '<a class="b" data-acao="enviado" data-id="' + esc(m.id) + '" data-canal="mail" href="mailto:' + esc(c.e) + '?subject=' + encodeURIComponent('Chat do evento ' + (ctx.titulo || '')) + '&body=' + encodeURIComponent(msg) + '">Email' + marca('mail') + '</a>';
         acoes += '<button class="b" data-acao="copiar" data-t="' + esc(msg) + '" data-k="' + esc(m.id) + '">' + (S.copiado === m.id ? 'Copiado ✓' : 'Copiar') + '</button>';
-        acoes += '<button class="b perigo" data-acao="remover" data-id="' + esc(m.id) + '" title="Retirar do chat (o link deixa de funcionar)">✕</button>';
+        acoes += '<button class="b perigo" data-acao="remover" data-id="' + esc(m.id) + '" title="Retirar do chat (o link dela deixa de funcionar)">' + (S.conf === 'rem:' + m.id ? 'Retirar? Toca outra vez' : '✕') + '</button>';
         var enviado = S.enviados[enviadoKey(m.id, 'wa')] || S.enviados[enviadoKey(m.id, 'sms')] || S.enviados[enviadoKey(m.id, 'mail')];
         h += '<div class="linha">' + avatar(m.name, m.id) + '<div class="nm">' + esc(m.name) + (variasG ? '<small>' + esc(m.grupo || '') + '</small>' : '') + '</div>' + chipContacto(p, c) +
           (enviado ? '<span class="tag ok">enviado</span>' : '') + botaoContacto(p) + '<div class="ac">' + acoes + '</div></div>' + (S.edita === m.id ? linhaEditar(p) : '');
       });
       h += '</div>';
       h += '<div class="rodape"><span class="nota">Válido até ' + new Date(d.expira).toLocaleDateString('pt-PT', { day: 'numeric', month: 'long' }) + ' · as mensagens apagam-se depois</span><span>' +
-        '<button class="b" data-acao="maisPessoas">Acrescentar pessoas</button> <button class="b perigo" data-acao="fechar">Fechar o chat</button></span></div>';
+        '<button class="b" data-acao="maisPessoas">Acrescentar pessoas</button> <button class="b perigo" data-acao="fechar">' + (S.conf === 'fechar' ? 'Tens a certeza? Toca outra vez (apaga tudo)' : 'Fechar o chat') + '</button></span></div>';
       return h;
     }
 
@@ -355,6 +368,40 @@
     }
 
     // tem de arrancar logo no clique (senao o navegador bloqueia a janela do Google): o script do Google e carregado ao abrir este ecra
+    function consultasNativas() {          // os 3 primeiros caracteres de cada nome da equipa: o telemovel so devolve contactos que lhes correspondam
+      var q = {};
+      crew.forEach(function (c) { chave(c.name).split(' ').forEach(function (t) { if (t.length >= 3) q[t.slice(0, 3)] = 1; }); });
+      return Object.keys(q);
+    }
+    function sincronizarNativo(pedir) {
+      if (!NAT) return;
+      var ir = function () {
+        var txt = '', lista = [];
+        try { txt = NAT.lerContactos(JSON.stringify(consultasNativas())); } catch (e) { txt = ''; }
+        try {
+          lista = JSON.parse(txt || '[]').map(function (c) {
+            var t = []; (c.t || []).forEach(function (x) { var f = fone(x); if (f && t.indexOf(f) < 0) t.push(f); });
+            return { n: String(c.n || ''), k: chave(c.n), t: t, e: c.e || '', tel: 1 };
+          }).filter(function (c) { return c.n && (c.t.length || c.e); });
+        } catch (e) { lista = []; }
+        S.lista = S.lista.filter(function (x) { return !x.tel; }).concat(lista);     // os do telemovel sao substituidos pelos de agora; os de ficheiro/Google ficam
+        lsSet(LS_G, S.lista);
+        S.googleErro = '';
+        S.importou = lista.length + ' contactos sincronizados do telemóvel (' + new Date().toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }) + ')';
+        desenhar();
+      };
+      var tem = false; try { tem = !!NAT.temPermissao(); } catch (e) {}
+      if (tem) { ir(); return; }
+      if (!pedir) return;
+      S.importou = 'À espera da tua permissão…'; desenhar();
+      window.__vtPerm = function (ok) {
+        window.__vtPerm = null;
+        if (ok) ir();
+        else { S.importou = ''; S.googleErro = 'Sem permissão aos contactos. Podes dá-la em Definições do Android → Apps → Video Team → Permissões → Contactos.'; desenhar(); }
+      };
+      try { NAT.pedirPermissao(); } catch (e) { window.__vtPerm = null; S.importou = ''; S.googleErro = 'Não consegui pedir a permissão ao Android.'; desenhar(); }
+    }
+
     function importarGoogle(cid) {
       S.googleErro = ''; S.importou = 'A pedir autorização ao Google…'; desenhar();
       var g = window.google && window.google.accounts && window.google.accounts.oauth2;
@@ -406,8 +453,11 @@
       var b = ev.target.closest ? ev.target.closest('[data-acao]') : null;
       if (!b || b.tagName === 'SELECT' || b.tagName === 'INPUT') return;
       var a = b.getAttribute('data-acao'), id = b.getAttribute('data-id');
+      var conf = S.conf; S.conf = null;                    // qualquer outro toque cancela uma confirmacao pendente
+      function pedeConfirmar(chv) { S.conf = chv; desenhar(); setTimeout(function () { if (S.conf === chv) { S.conf = null; desenhar(); } }, 5000); }
       if (a === 'sair') { el.remove(); var s = document.getElementById('vtch-css'); if (s) s.remove(); return; }
       lerCaixas();
+      if (a === 'sincNativo') { sincronizarNativo(true); return; }
       if (a === 'google') {
         var cid = clientId();
         if (!cid) { S.pedeCid = true; S.googleErro = ''; desenhar(); return; }
@@ -452,8 +502,7 @@
       if (a === 'msgPadrao') { S.msg = MSG_PADRAO; lsSet(LS_MSG, S.msg); desenhar(); return; }
       if (a === 'copiar') {
         var tx = b.getAttribute('data-t'), k = b.getAttribute('data-k');
-        var feito = function () { S.copiado = k; desenhar(); setTimeout(function () { if (S.copiado === k) { S.copiado = null; desenhar(); } }, 1800); };
-        try { navigator.clipboard.writeText(tx).then(feito, function () { window.prompt('Copia:', tx); }); } catch (e) { window.prompt('Copia:', tx); }
+        copiarTexto(tx, function () { S.copiado = k; desenhar(); setTimeout(function () { if (S.copiado === k) { S.copiado = null; desenhar(); } }, 1800); });
         return;
       }
       if (a === 'enviado') { S.enviados[enviadoKey(id, b.getAttribute('data-canal'))] = 1; lsSet(LS_ENV, S.enviados); setTimeout(desenhar, 300); return; }   // o link abre sozinho
@@ -465,19 +514,19 @@
         return;
       }
       if (a === 'remover') {
-        var m = S.doc.membros.filter(function (x) { return x.id === id; })[0];
-        if (!confirm('Retirar ' + (m ? m.name : 'esta pessoa') + ' do chat? O link dela deixa de funcionar.')) return;
+        if (conf !== 'rem:' + id) { pedeConfirmar('rem:' + id); return; }
         tratar(H('/remover', { key: ctx.sig, id: id }), function (j) { S.doc = j; });
         return;
       }
       if (a === 'fechar') {
-        if (!confirm('Fechar o chat deste evento? Todos os links deixam de funcionar e as mensagens apagam-se. Isto não se desfaz.')) return;
+        if (conf !== 'fechar') { pedeConfirmar('fechar'); return; }
         tratar(H('/fechar', { key: ctx.sig }), function () { S.doc = null; S.vista = 'escolher'; });
       }
     });
 
     desenhar();
-    if (typeof document !== 'undefined') carregarGsi().catch(function () { /* sem Google: continua a haver ficheiro e telemovel */ });
+    if (NAT) sincronizarNativo(false);
+    if (typeof document !== 'undefined' && !NAT) carregarGsi().catch(function () { /* sem Google: continua a haver ficheiro e telemovel */ });
     H('?key=' + encodeURIComponent(ctx.sig)).then(function (j) {
       if (j.existe) { S.doc = j; S.vista = 'gerir'; } else S.vista = 'escolher';
       desenhar();

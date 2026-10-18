@@ -1,17 +1,23 @@
 package com.mike.videoteam
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
+import android.provider.ContactsContract
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
+import org.json.JSONArray
 import org.json.JSONObject
+import java.text.Normalizer
 
 class MainActivity : Activity() {
 
@@ -19,6 +25,8 @@ class MainActivity : Activity() {
         const val HOST = "7eventos.avk.pt"
         const val START = "http://$HOST/7Eventos/EscalasTecnicos/GetPeriodoJS"
         const val SALAS_API = "https://video-team.avkvideoshare.workers.dev"
+        const val PEDIDO_CONTACTOS = 4242
+        const val MAX_CONTACTOS = 300
     }
 
     private lateinit var web: WebView
@@ -26,6 +34,7 @@ class MainActivity : Activity() {
     private lateinit var appJs: String
     private lateinit var salasJs: String
     private var loginAttempts = 0
+    @Volatile private var paginaDoHost = false     // a ponte so responde enquanto a pagina aberta for a do 7Eventos
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -34,13 +43,15 @@ class MainActivity : Activity() {
         appJs = assets.open("app.js").bufferedReader().use { it.readText() }
         // editor «Equipa por sala» (motor + ecra), carregado antes do app.js
         salasJs = assets.open("salas-motor.js").bufferedReader().use { it.readText() } + "\n;" +
-            assets.open("salas.js").bufferedReader().use { it.readText() }
+            assets.open("salas.js").bufferedReader().use { it.readText() } + "\n;" +
+            assets.open("chat.js").bufferedReader().use { it.readText() }   // chat do evento (ecra do dono)
 
         web = WebView(this)
         setContentView(web)
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
         CookieManager.getInstance().setAcceptCookie(true)
+        web.addJavascriptInterface(Nativo(), "VTNativo")
 
         web.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, req: WebResourceRequest): Boolean {
@@ -49,7 +60,10 @@ class MainActivity : Activity() {
                 return true
             }
 
-            override fun onPageFinished(view: WebView, url: String) = onPage(url)
+            override fun onPageFinished(view: WebView, url: String) {
+                paginaDoHost = Uri.parse(url).host == HOST
+                onPage(url)
+            }
 
             override fun onReceivedError(view: WebView, req: WebResourceRequest, err: WebResourceError) {
                 if (!req.isForMainFrame) return
@@ -84,6 +98,85 @@ class MainActivity : Activity() {
                 web.evaluateJavascript(salasJs, null)
                 web.evaluateJavascript("($appJs)($cfg)", null)
             }
+        }
+    }
+
+    /**
+     * Contactos do telemovel para o chat do evento — como o WhatsApp: a permissao e pedida ao Android ao tocar em «Sincronizar» e a partir
+     * dai a sincronizacao e automatica. Nada sai do telemovel: o ecra do chat guarda o que recebe so neste aparelho.
+     * Para nao entregar a agenda inteira, a pagina diz que nomes procura (3 letras de cada nome da equipa) e so voltam os contactos parecidos.
+     */
+    inner class Nativo {
+        @JavascriptInterface
+        fun temPermissao(): Boolean = checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
+
+        @JavascriptInterface
+        fun pedirPermissao() {
+            runOnUiThread { requestPermissions(arrayOf(Manifest.permission.READ_CONTACTS), PEDIDO_CONTACTOS) }
+        }
+
+        @JavascriptInterface
+        fun lerContactos(consultasJson: String): String {
+            if (!paginaDoHost || !temPermissao()) return "[]"
+            val consultas = HashSet<String>()
+            try {
+                val a = JSONArray(consultasJson)
+                for (i in 0 until a.length()) normalizar(a.optString(i)).takeIf { it.length >= 3 }?.let { consultas.add(it) }
+            } catch (e: Exception) { return "[]" }
+            if (consultas.isEmpty()) return "[]"
+
+            val nomes = HashMap<Long, String>()
+            val telefones = HashMap<Long, MutableList<String>>()
+            val emails = HashMap<Long, String>()
+            try {
+                contentResolver.query(
+                    ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                    arrayOf(ContactsContract.CommonDataKinds.Phone.CONTACT_ID, ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER),
+                    null, null, null
+                )?.use { c ->
+                    while (c.moveToNext()) {
+                        val id = c.getLong(0)
+                        val nome = c.getString(1) ?: continue
+                        val num = c.getString(2) ?: continue
+                        if (!parecido(nome, consultas)) continue
+                        nomes[id] = nome
+                        telefones.getOrPut(id) { mutableListOf() }.let { if (num !in it) it.add(num) }
+                    }
+                }
+                if (nomes.isNotEmpty()) {
+                    contentResolver.query(
+                        ContactsContract.CommonDataKinds.Email.CONTENT_URI,
+                        arrayOf(ContactsContract.CommonDataKinds.Email.CONTACT_ID, ContactsContract.CommonDataKinds.Email.ADDRESS),
+                        null, null, null
+                    )?.use { c ->
+                        while (c.moveToNext()) {
+                            val id = c.getLong(0)
+                            if (id in nomes && id !in emails) emails[id] = c.getString(1) ?: ""
+                        }
+                    }
+                }
+            } catch (e: Exception) { return "[]" }
+
+            val out = JSONArray()
+            for ((id, nome) in nomes) {
+                if (out.length() >= MAX_CONTACTOS) break
+                out.put(JSONObject().put("n", nome).put("t", JSONArray(telefones[id] ?: emptyList<String>())).put("e", emails[id] ?: ""))
+            }
+            return out.toString()
+        }
+    }
+
+    private fun normalizar(s: String): String =
+        Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "").replace(Regex("[^a-z0-9 ]"), " ").replace(Regex("\\s+"), " ").trim()
+
+    private fun parecido(nome: String, consultas: Set<String>): Boolean =
+        normalizar(nome).split(" ").any { palavra -> consultas.any { palavra.startsWith(it) } }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == PEDIDO_CONTACTOS) {
+            val ok = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+            web.evaluateJavascript("(function(){if(window.__vtPerm)window.__vtPerm($ok)})()", null)
         }
     }
 

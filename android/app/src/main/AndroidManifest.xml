@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Chat do evento: so para ligar os numeros dos contactos aos nomes da equipa (pedida ao tocar em «Sincronizar», como no WhatsApp) -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
 
     <application
         android:label="Video Team"

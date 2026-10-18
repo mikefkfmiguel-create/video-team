@@ -527,14 +527,18 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
     if (sb) sb.onclick = function () { shareProject(e, sb); };
     var chb = document.getElementById('chatBtn');
     if (chb) chb.onclick = function () {
-      document.getElementById('sheet').classList.remove('open');
       // so o que esta filtrado no ecra (grupo, «só com marcação», pesquisa) vem marcado; o resto fica a um toque
       var vis = {}; visiblePeople().forEach(function (p) { vis[p.id] = 1; });
       var cg = currentGroup();
-      window.__vtChat.abrir({
-        api: cfg.api, pin: cfg.pin, sig: sig(e), titulo: e.event || ('OS ' + e.code), filtroTxt: cg === '*' ? 'todos os grupos' : cg,
-        crew: list.map(function (c) { return { id: c.p.id, name: c.p.name, grupo: c.p.grupo, days: c.days, filtrado: !!vis[c.p.id] }; })
-      });
+      var abrirChat = function (pin) {
+        document.getElementById('sheet').classList.remove('open');
+        window.__vtChat.abrir({
+          api: cfg.api || cfg.salasApi, pin: pin, sig: sig(e), titulo: e.event || ('OS ' + e.code), filtroTxt: cg === '*' ? 'todos os grupos' : cg,
+          onAuthFail: cfg.api ? null : function () { store('vt.salaspin', ''); },
+          crew: list.map(function (c) { return { id: c.p.id, name: c.p.name, grupo: c.p.grupo, days: c.days, filtrado: !!vis[c.p.id] }; })
+        });
+      };
+      if (cfg.api) abrirChat(cfg.pin); else withSalasPin(abrirChat);   // app Android/PC: a chave do dono pede-se uma vez e fica neste aparelho
     };
     var slb = document.getElementById('salasBtn');
     if (slb) slb.onclick = function () {
@@ -574,9 +578,10 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
     };
   }
 
-  // botao "Chat do evento": so o dono, so na versao web (fala com o Worker), so quando o modulo do chat esta carregado
+  // botao "Chat do evento": so o dono (web: chave do dono; app Android/PC: chave pedida uma vez), so quando o modulo do chat esta carregado
   function chatButton(e) {
-    if (!(cfg.api && cfg.role === 'owner') || !window.__vtChat || e.kind === 'inc') return '';
+    var ok = cfg.api ? cfg.role === 'owner' : !!cfg.salasApi;
+    if (!ok || !window.__vtChat || e.kind === 'inc') return '';
     return '<button class="pdf share" id="chatBtn"><span>CHAT</span>Chat do evento com a equipa</button>';
   }
 

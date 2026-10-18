@@ -260,12 +260,14 @@ try:
         ok(len(depois["membros"]) == 4 and [m for m in depois["membros"] if m["id"] == "1"][0]["token"] == tok_ana, "a Marta entra e o link da Ana (ja enviado) nao muda")
 
         # ---- retirar e fechar
-        pag.once("dialog", lambda d: d.accept())
+        pag.locator("#vtch .linha", has_text="Hugo Dias").locator("[data-acao=remover]").click()
+        ok("Toca outra vez" in pag.inner_text("#vtch"), "retirar pede confirmacao no proprio botao (sem janelas do navegador, que a app Android nao tem)")
         pag.locator("#vtch .linha", has_text="Hugo Dias").locator("[data-acao=remover]").click()
         pag.wait_for_function("!document.querySelector('#vtch').innerText.includes('Hugo Dias')", timeout=8000)
         tok_hugo = [m for m in antes["membros"] if m["id"] == "4"][0]["token"]
         ok(chamar("/chat/api/sala", k=tok_hugo)[0] == 401, "retirar o Hugo: o link dele deixa de funcionar")
-        pag.once("dialog", lambda d: d.accept())
+        pag.click("[data-acao=fechar]")
+        ok("Tens a certeza" in pag.inner_text("#vtch"), "fechar o chat pede confirmacao")
         pag.click("[data-acao=fechar]")
         pag.wait_for_function("document.querySelector('#vtch').innerText.includes('Criar chat')", timeout=8000)
         ok(chamar("/chat/api/sala", k=tok_ana)[0] == 401 and chamar("/chat/api/sala", k=dono_href.split("#")[1])[0] == 401, "fechar o chat: todos os links deixam de funcionar")
@@ -283,8 +285,52 @@ try:
         pag.select_option("#vtch select[data-acao=cand]", index=1)
         ok("+351 961 000 001" in pag.inner_text("#vtch .nm"), "confirmado: o Rafael fica com o numero do «Rafa»")
 
-        # ---- chave errada
+        # ---- app Android: permissao de contactos pedida ao sistema (ponte VTNativo simulada) e sincronizacao automatica
         pag.evaluate("document.getElementById('vtch').remove()")
+        pag.evaluate("localStorage.removeItem('vt.gcontatos'); localStorage.removeItem('vt.contactos')")
+        ctx2 = nav.new_context(viewport={'width': 430, 'height': 900})
+        pag2 = ctx2.new_page()
+        pag2.add_init_script("""
+          window.__perm = false; window.__pedidos = 0; window.__consultas = [];
+          window.__agenda = [
+            {n: 'Rafael Anchieta Tecnico', t: ['961 000 001'], e: ''},
+            {n: 'Bruno Costa', t: ['+351 962 000 002'], e: 'b@x.pt'}
+          ];
+          window.VTNativo = {
+            temPermissao: function () { return window.__perm; },
+            pedirPermissao: function () { window.__pedidos++; setTimeout(function () { window.__perm = window.__aceitar !== false; if (window.__vtPerm) window.__vtPerm(window.__perm); }, 50); },
+            lerContactos: function (q) { window.__consultas.push(JSON.parse(q)); return JSON.stringify(window.__agenda); }
+          };
+        """)
+        pag2.route("https://accounts.google.com/gsi/client", lambda rt: rt.fulfill(status=200, content_type="text/javascript", body=""))
+        pag2.route(ORIGEM + "/**", lambda rt: rt.fulfill(status=200, body=chat_js if rt.request.url.endswith("chat.js") else PAGINA.encode("utf-8"),
+                                                          content_type="application/javascript" if rt.request.url.endswith("chat.js") else "text/html; charset=utf-8"))
+        pag2.goto(ORIGEM + "/")
+        pag2.evaluate("window.__vtChat.abrir({ api: '%s', pin: 'dono-teste', sig: 'os:8:Nativo', titulo: 'Nativo', crew: [{id:'1', name:'Rafael Anchieta_12H', grupo:'T', days:['2026-10-21'], filtrado:true}, {id:'2', name:'Bruno Costa*_10H', grupo:'T', days:['2026-10-21'], filtrado:true}] })" % API)
+        pag2.wait_for_selector("#vtch .linha", timeout=15000)
+        ok(pag2.locator("[data-acao=sincNativo]").count() == 1 and pag2.locator("[data-acao=pickVarios]").count() == 0, "na app Android: botao «Sincronizar com os contactos do telemóvel» (como no WhatsApp)")
+        ok(pag2.evaluate("window.__pedidos") == 0 and pag2.evaluate("window.__consultas.length") == 0, "ao abrir sem permissao NAO pede nem le nada sozinho")
+        pag2.click("[data-acao=sincNativo]")
+        pag2.wait_for_function("document.getElementById('vtch').innerText.includes('contactos sincronizados')", timeout=5000)
+        ok(pag2.evaluate("window.__pedidos") == 1, "carregar pede a permissao ao Android (uma vez)")
+        ok(pag2.evaluate("window.__consultas[0]").__contains__("raf") and pag2.evaluate("window.__consultas[0]").__contains__("bru") and pag2.evaluate("window.__consultas[0]").__contains__("anc"), "so pede ao telefone os contactos com nome parecido com a equipa (3 letras por nome)")
+        t = pag2.inner_text("#vtch")
+        ok("+351 961 000 001" in t and "+351 962 000 002" in t, "Rafael (contacto «Rafael Anchieta Tecnico») e Bruno ficam com o telemovel, sem sufixos _12H")
+        pag2.evaluate("document.getElementById('vtch').remove()")
+        pag2.evaluate("window.__agenda = [{n: 'Rafael Anchieta', t: ['969 999 999'], e: ''}]")
+        pag2.evaluate("window.__vtChat.abrir({ api: '%s', pin: 'dono-teste', sig: 'os:8:Nativo', titulo: 'Nativo', crew: [{id:'1', name:'Rafael Anchieta_12H', grupo:'T', days:['2026-10-21'], filtrado:true}] })" % API)
+        pag2.wait_for_function("document.getElementById('vtch').innerText.includes('+351 969 999 999')", timeout=5000)
+        ok(pag2.evaluate("window.__pedidos") == 1, "da segunda vez ja tem permissao: sincroniza sozinho ao abrir (sem voltar a pedir) e apanha o numero novo")
+        pag2.evaluate("document.getElementById('vtch').remove(); window.__perm = false; window.__aceitar = false")
+        pag2.evaluate("window.__vtChat.abrir({ api: '%s', pin: 'dono-teste', sig: 'os:8:Nativo', titulo: 'Nativo', crew: [{id:'1', name:'Rafael Anchieta', grupo:'T', days:['2026-10-21'], filtrado:true}] })" % API)
+        pag2.wait_for_selector("[data-acao=sincNativo]", timeout=5000)
+        pag2.click("[data-acao=sincNativo]")
+        pag2.wait_for_function("document.getElementById('vtch').innerText.includes('Sem permissão aos contactos')", timeout=5000)
+        ok(True, "se a pessoa recusa a permissao: mensagem a explicar onde a dar nas definicoes do Android")
+        pag2.close()
+
+        # ---- chave errada
+        pag.evaluate("var x = document.getElementById('vtch'); if (x) x.remove()")
         pag.evaluate("window.__vtChat.abrir({ api: '%s', pin: 'errada', sig: 'x', titulo: 'x', crew: CREW })" % API)
         pag.wait_for_function("document.getElementById('vtch').innerText.includes('chave')", timeout=8000)
         ok(True, "com a chave errada: avisa que a chave do dono ja nao serve")
