@@ -137,6 +137,14 @@
     '#vtch .spin{width:26px;height:26px;border:3px solid var(--line);border-top-color:var(--acc);border-radius:50%;margin:50px auto;animation:vtchsp .8s linear infinite}@keyframes vtchsp{to{transform:rotate(360deg)}}'
   ].join('\n');
 
+  // Android (Chrome): o telemovel deixa a pagina escolher contactos (so os que tu marcares, com o teu OK). iPhone nao tem isto: serve o ficheiro.
+  var PICKER = !!(typeof navigator !== 'undefined' && navigator.contacts && navigator.contacts.select && typeof window !== 'undefined' && window.isSecureContext);
+  function dePicker(c) {   // {name:[], tel:[], email:[]} -> {n, k, t:[digitos], e}
+    var n = (c.name && c.name[0]) || '', t = [], e = (c.email && c.email[0]) || '';
+    (c.tel || []).forEach(function (x) { var f = fone(x); if (f && t.indexOf(f) < 0) t.push(f); });
+    return { n: n, k: chave(n), t: t, e: e };
+  }
+
   // ---------------------------------------------------------------- o ecra
   function abrir(ctx) {
     if (document.getElementById('vtch')) return;
@@ -146,11 +154,13 @@
     var crew = (ctx.crew || []).slice().sort(function (a, b) { return a.name.localeCompare(b.name, 'pt'); });
     var ultimoDia = '';
     crew.forEach(function (c) { (c.days || []).forEach(function (d) { if (d > ultimoDia) ultimoDia = d; }); });
+    var temFiltro = crew.some(function (c) { return c.filtrado; }) && crew.some(function (c) { return !c.filtrado; });
     var S = {
-      doc: null, vista: 'carregar', sel: {}, erro: '', ocupado: false, edita: null, nome: ls(LS_NOME, 'Mike'), msg: ls(LS_MSG, MSG_PADRAO),
+      todos: !temFiltro, doc: null, vista: 'carregar', sel: {}, erro: '', ocupado: false, edita: null, nome: ls(LS_NOME, 'Mike'), msg: ls(LS_MSG, MSG_PADRAO),
       lista: ls(LS_G, []), manual: ls(LS_M, {}), enviados: ls(LS_ENV, {}), copiado: null, importou: ''
     };
-    crew.forEach(function (c) { S.sel[c.id] = true; });
+    crew.forEach(function (c) { S.sel[c.id] = temFiltro ? !!c.filtrado : true; });
+    function pessoasVisiveis() { return crew.filter(function (c) { return S.todos || !temFiltro || c.filtrado; }); }
     var base = ctx.chatBase || (function () { try { var u = new URL('chat.html', location.href); u.search = ''; u.hash = ''; return u.href; } catch (e) { return 'chat.html'; } })();
 
     function H(caminho, corpo) {
@@ -180,6 +190,11 @@
       return '<span class="tag aviso">sem contacto</span>';
     }
 
+    function botaoContacto(p) {
+      return (PICKER ? '<button class="b" data-acao="pick" data-id="' + esc(p.id) + '" title="Escolher o contacto no telemóvel">📇</button>' : '') +
+        '<button class="b" data-acao="edita" data-id="' + esc(p.id) + '" title="Escrever ou corrigir o contacto">✎</button>';
+    }
+
     function linhaEditar(p) {
       var m = S.manual[p.id] || {};
       return '<div class="edita"><input type="tel" id="vtch-tel" placeholder="Telemóvel (ex. 912 345 678)" value="' + esc(m.t ? '+' + m.t : '') + '" inputmode="tel" autocomplete="off">' +
@@ -189,14 +204,16 @@
 
     // ---- 1) escolher pessoas e criar
     function escolher() {
-      var n = crew.filter(function (c) { return S.sel[c.id]; }).length, comTel = 0;
-      var h = '<div class="caixa"><h4>Quem entra no chat</h4><div class="nota">Escolhe as pessoas. Cada uma recebe o seu link pessoal e fica a ver e a escrever neste chat do evento.</div>';
-      crew.forEach(function (p) {
+      var n = crew.filter(function (c) { return S.sel[c.id]; }).length, comTel = 0, vis = pessoasVisiveis();
+      var h = '<div class="caixa"><h4>Quem entra no chat</h4><div class="nota">' + (temFiltro && !S.todos ? 'Só as ' + vis.length + ' pessoas do filtro do Video Team' + (ctx.filtroTxt ? ' (' + esc(ctx.filtroTxt) + ')' : '') + '. ' : '') +
+        'Cada uma recebe o seu link pessoal e fica a ver e a escrever neste chat do evento.</div>';
+      vis.forEach(function (p) {
         var c = eu(p); if (S.sel[p.id] && c.t) comTel++;
         h += '<div class="linha"><input type="checkbox" data-acao="sel" data-id="' + esc(p.id) + '" id="vtch-s' + esc(p.id) + '"' + (S.sel[p.id] ? ' checked' : '') + ' aria-label="' + esc(p.name) + '">' + avatar(p.name, p.id) +
           '<label class="nm" for="vtch-s' + esc(p.id) + '">' + esc(p.name) + '<small>' + esc(p.grupo || '') + '</small></label>' + chipContacto(p, c) +
-          '<button class="b" data-acao="edita" data-id="' + esc(p.id) + '" title="Escrever ou corrigir o contacto">✎</button></div>' + (S.edita === p.id ? linhaEditar(p) : '');
+          botaoContacto(p) + '</div>' + (S.edita === p.id ? linhaEditar(p) : '');
       });
+      if (temFiltro) h += '<div style="margin-top:8px"><button class="b" data-acao="todos">' + (S.todos ? 'Mostrar só o filtro' : 'Mostrar toda a equipa do evento (+' + (crew.length - crew.filter(function (c) { return c.filtrado; }).length) + ')') + '</button></div>';
       h += '</div>' + caixaContactos();
       h += '<div class="caixa"><h4>O teu nome no chat</h4><input type="text" id="vtch-nome" maxlength="40" value="' + esc(S.nome) + '"><div class="nota">Aparece como «régie» ao lado do nome.</div></div>';
       h += '<div class="rodape"><span class="nota">' + n + ' pessoa' + (n === 1 ? '' : 's') + ' · ' + comTel + ' com telemóvel</span><span>' +
@@ -205,8 +222,8 @@
     }
 
     function caixaContactos() {
-      return '<div class="caixa"><h4>Contactos</h4><div class="nota">Os números ficam só neste aparelho. No Google Contactos (contacts.google.com): <b>Exportar → Google CSV</b>, e importa o ficheiro aqui (também serve um .vcf).</div>' +
-        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="b" data-acao="importar">Importar ficheiro (.csv / .vcf)</button><input type="file" id="vtch-fich" accept=".csv,.vcf,text/csv,text/vcard,text/x-vcard" hidden>' +
+      return '<div class="caixa"><h4>Contactos</h4><div class="nota">Os números ficam só neste aparelho. ' + (PICKER ? 'No telemóvel, escolhe só os contactos da equipa (ou usa o 📇 em cada pessoa). ' : 'No iPhone ou no computador não há acesso direto aos contactos: ') + 'Em contacts.google.com: <b>Exportar → Google CSV</b>, e importa o ficheiro aqui (também serve um .vcf).</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + (PICKER ? '<button class="b pri" data-acao="pickVarios">Escolher contactos no telemóvel</button>' : '') + '<button class="b" data-acao="importar">Importar ficheiro (.csv / .vcf)</button><input type="file" id="vtch-fich" accept=".csv,.vcf,text/csv,text/vcard,text/x-vcard" hidden>' +
         '<span class="nota" style="margin:0">' + (S.importou || (S.lista.length ? S.lista.length + ' contactos importados' : 'Ainda sem contactos importados')) + '</span>' +
         (S.lista.length ? '<button class="b perigo" data-acao="limpaContactos">Apagar importados</button>' : '') + '</div></div>';
     }
@@ -231,7 +248,7 @@
         acoes += '<button class="b perigo" data-acao="remover" data-id="' + esc(m.id) + '" title="Retirar do chat (o link deixa de funcionar)">✕</button>';
         var enviado = S.enviados[enviadoKey(m.id, 'wa')] || S.enviados[enviadoKey(m.id, 'sms')] || S.enviados[enviadoKey(m.id, 'mail')];
         h += '<div class="linha">' + avatar(m.name, m.id) + '<div class="nm">' + esc(m.name) + '<small>' + esc(m.grupo || '') + '</small></div>' + chipContacto(p, c) +
-          (enviado ? '<span class="tag ok">enviado</span>' : '') + '<button class="b" data-acao="edita" data-id="' + esc(m.id) + '" title="Escrever ou corrigir o contacto">✎</button><div class="ac">' + acoes + '</div></div>' + (S.edita === m.id ? linhaEditar(p) : '');
+          (enviado ? '<span class="tag ok">enviado</span>' : '') + botaoContacto(p) + '<div class="ac">' + acoes + '</div></div>' + (S.edita === m.id ? linhaEditar(p) : '');
       });
       h += '</div>' + caixaContactos();
       h += '<div class="rodape"><span class="nota">Válido até ' + new Date(d.expira).toLocaleDateString('pt-PT', { day: 'numeric', month: 'long' }) + ' · as mensagens apagam-se depois</span><span>' +
@@ -287,6 +304,23 @@
       var a = b.getAttribute('data-acao'), id = b.getAttribute('data-id');
       if (a === 'sair') { el.remove(); var s = document.getElementById('vtch-css'); if (s) s.remove(); return; }
       lerCaixas();
+      if (a === 'todos') { S.todos = !S.todos; desenhar(); return; }
+      if (a === 'pick' || a === 'pickVarios') {
+        if (!PICKER) return;
+        var multi = a === 'pickVarios';
+        navigator.contacts.select(['name', 'tel', 'email'], { multiple: multi }).then(function (res) {
+          var novos = (res || []).map(dePicker).filter(function (c) { return c.t.length || c.e; });
+          if (!novos.length) return;
+          if (multi) {
+            novos.forEach(function (c) { if (!S.lista.some(function (x) { return x.k === c.k && x.t[0] === c.t[0]; })) S.lista.push(c); });
+            lsSet(LS_G, S.lista); S.importou = novos.length + ' escolhidos no telemóvel · ' + S.lista.length + ' contactos';
+          } else {
+            S.manual[id] = { t: novos[0].t[0] || '', e: novos[0].e || '' }; lsSet(LS_M, S.manual);
+          }
+          desenhar();
+        }).catch(function () { /* cancelou */ });
+        return;
+      }
       if (a === 'importar') { document.getElementById('vtch-fich').click(); return; }
       if (a === 'limpaContactos') { S.lista = []; lsSet(LS_G, []); S.importou = ''; desenhar(); return; }
       if (a === 'edita') { S.edita = S.edita === id ? null : id; desenhar(); var i = document.getElementById('vtch-tel'); if (i) i.focus(); return; }
@@ -307,7 +341,7 @@
       }
       if (a === 'enviado') { S.enviados[enviadoKey(id, b.getAttribute('data-canal'))] = 1; lsSet(LS_ENV, S.enviados); setTimeout(desenhar, 300); return; }   // o link abre sozinho
       if (a === 'voltaGerir') { S.vista = 'gerir'; desenhar(); return; }
-      if (a === 'maisPessoas') { crew.forEach(function (c) { S.sel[c.id] = !S.doc.membros.some(function (m) { return m.id === c.id; }); }); S.vista = 'escolher'; desenhar(); return; }
+      if (a === 'maisPessoas') { S.todos = true; crew.forEach(function (c) { S.sel[c.id] = !S.doc.membros.some(function (m) { return m.id === c.id; }) && (!temFiltro || !!c.filtrado); }); S.vista = 'escolher'; desenhar(); return; }
       if (a === 'criar') {
         var membros = crew.filter(function (c) { return S.sel[c.id]; }).map(function (c) { return { id: c.id, name: c.name, grupo: c.grupo || '' }; });
         tratar(H('/criar', { key: ctx.sig, label: ctx.titulo, ate: ultimoDia, membros: membros, donoNome: S.nome }), function (j) { S.doc = j; S.vista = 'gerir'; });

@@ -527,9 +527,12 @@
     var chb = document.getElementById('chatBtn');
     if (chb) chb.onclick = function () {
       document.getElementById('sheet').classList.remove('open');
+      // so o que esta filtrado no ecra (grupo, «só com marcação», pesquisa) vem marcado; o resto fica a um toque
+      var vis = {}; visiblePeople().forEach(function (p) { vis[p.id] = 1; });
+      var cg = currentGroup();
       window.__vtChat.abrir({
-        api: cfg.api, pin: cfg.pin, sig: sig(e), titulo: e.event || ('OS ' + e.code),
-        crew: list.map(function (c) { return { id: c.p.id, name: c.p.name, grupo: c.p.grupo, days: c.days }; })
+        api: cfg.api, pin: cfg.pin, sig: sig(e), titulo: e.event || ('OS ' + e.code), filtroTxt: cg === '*' ? 'todos os grupos' : cg,
+        crew: list.map(function (c) { return { id: c.p.id, name: c.p.name, grupo: c.p.grupo, days: c.days, filtrado: !!vis[c.p.id] }; })
       });
     };
     var slb = document.getElementById('salasBtn');

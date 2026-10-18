@@ -38,13 +38,13 @@ PAGINA = """<!doctype html><html lang="pt"><head><meta charset="utf-8"><meta nam
 </head><body><button id="abre">abrir</button><script src="chat.js"></script>
 <script>
 var CREW = [
-  {id:'1', name:'Ana Silva', grupo:'Técnicos de Vídeo', days:['2026-10-21','2026-10-22']},
-  {id:'2', name:'Rui Costa', grupo:'Técnicos de Vídeo', days:['2026-10-21','2026-10-22']},
-  {id:'3', name:'Marta Lopes', grupo:'Técnicos de Luz', days:['2026-10-22']},
-  {id:'4', name:'Hugo Dias', grupo:'Técnicos de Vídeo', days:['2026-10-21']}
+  {id:'1', name:'Ana Silva', grupo:'Técnicos de Vídeo', days:['2026-10-21','2026-10-22'], filtrado:true},
+  {id:'2', name:'Rui Costa', grupo:'Técnicos de Vídeo', days:['2026-10-21','2026-10-22'], filtrado:true},
+  {id:'3', name:'Marta Lopes', grupo:'Técnicos de Vídeo', days:['2026-10-22'], filtrado:true},
+  {id:'4', name:'Hugo Dias', grupo:'Técnicos de Luz', days:['2026-10-21'], filtrado:false}
 ];
 document.getElementById('abre').onclick = function () {
-  window.__vtChat.abrir({ api: '%API%', pin: 'dono-teste', sig: '%SIG%', titulo: 'Portugal Digital Summit', crew: CREW });
+  window.__vtChat.abrir({ api: '%API%', pin: 'dono-teste', sig: '%SIG%', titulo: 'Portugal Digital Summit', filtroTxt: 'Técnicos de Vídeo', crew: CREW });
 };
 </script></body></html>""".replace("%API%", API).replace("%SIG%", SIG)
 
@@ -88,6 +88,7 @@ try:
         nav = p.chromium.launch(channel="msedge", headless=True, args=["--disable-features=LocalNetworkAccessChecks,PrivateNetworkAccessSendPreflights,BlockInsecurePrivateNetworkRequests"])
         ctx = nav.new_context(viewport={"width": 430, "height": 900}, permissions=["clipboard-read", "clipboard-write"])
         pag = ctx.new_page()
+        pag.add_init_script("window.__pick = []; window.__picks = []; navigator.contacts = { select: function (props, opts) { window.__picks.push({props: props, multiple: !!(opts && opts.multiple)}); return Promise.resolve(window.__pick); } };")
         erros = []
         pag.on("pageerror", lambda e: erros.append(str(e)))
         pag.route(ORIGEM + "/**", lambda r: r.fulfill(status=200, body=chat_js if r.request.url.endswith("chat.js") else PAGINA.encode("utf-8"),
@@ -95,8 +96,13 @@ try:
         pag.goto(ORIGEM + "/")
         pag.click("#abre")
         pag.wait_for_selector("#vtch .linha", timeout=15000)
-        ok(pag.locator("#vtch .linha").count() == 4 and "Novo chat" in pag.inner_text("#vtch .top"), "novo chat: lista as 4 pessoas do evento, todas marcadas")
-        ok(pag.locator("#vtch .tag.aviso").count() == 4, "ainda sem contactos: «sem contacto» em todas")
+        ok(pag.locator("#vtch .linha").count() == 3 and "Novo chat" in pag.inner_text("#vtch .top"), "novo chat: so as 3 pessoas do filtro do Video Team, todas marcadas")
+        ok("Só as 3 pessoas do filtro" in pag.inner_text("#vtch") and "Técnicos de Vídeo" in pag.inner_text("#vtch") and "Hugo" not in pag.inner_text("#vtch"), "diz que e so o filtro e o Hugo (fora do filtro) nao aparece")
+        ok(pag.locator("#vtch .tag.aviso").count() == 3, "ainda sem contactos: «sem contacto» em todas")
+        pag.click("[data-acao=todos]")
+        ok(pag.locator("#vtch .linha").count() == 4 and not pag.locator("#vtch-s4").is_checked(), "«Mostrar toda a equipa»: o Hugo aparece mas desmarcado")
+        pag.click("[data-acao=todos]")
+        ok(pag.locator("#vtch .linha").count() == 3, "e volta a esconder-se")
 
         # ---- importar contactos do Google
         pag.set_input_files("#vtch-fich", csv_path)
@@ -107,16 +113,25 @@ try:
         ok(pag.locator("#vtch select[data-acao=cand]").count() == 1, "o Rui tem dois contactos iguais: pede para escolher (nao adivinha)")
         pag.select_option("#vtch select[data-acao=cand]", index=2)
         ok("+351 968 222 333" in pag.inner_text("#vtch"), "escolhida a segunda opcao, o Rui fica com esse numero")
-        # o Hugo nao esta nos contactos: escreve-se a mao
-        pag.locator("#vtch .linha", has_text="Hugo Dias").locator("[data-acao=edita]").click()
-        pag.fill("#vtch-tel", "93 777 66 55")
-        pag.click("[data-acao=gravaContacto]")
-        ok("+351 937 776 655" in pag.inner_text("#vtch"), "o Hugo: telemovel escrito a mao")
+        # contactos do TELEMOVEL (Android): escolher varios de uma vez, ou um por pessoa
+        ok(pag.locator("[data-acao=pickVarios]").count() == 1 and pag.locator("#vtch .linha [data-acao=pick]").count() == 3, "no Android aparecem «Escolher contactos no telemóvel» e o icone de contacto por pessoa")
+        pag.click("[data-acao=todos]")
+        pag.evaluate("window.__pick = [{name: ['Hugo Dias'], tel: ['93 777 66 55'], email: []}, {name: ['Gente Qualquer'], tel: [], email: []}]")
+        pag.click("[data-acao=pickVarios]")
+        pag.wait_for_function("document.getElementById('vtch').innerText.includes('+351 937 776 655')", timeout=5000)
+        picks = pag.evaluate("window.__picks")
+        ok(picks[0]["multiple"] is True and set(picks[0]["props"]) == {"name", "tel", "email"}, "pede ao telemovel so nome, telefone e email, varios de uma vez")
+        ok("+351 937 776 655" in pag.locator("#vtch .linha", has_text="Hugo Dias").inner_text(), "o Hugo escolhido no telemovel fica com o numero (casado pelo nome)")
+        pag.evaluate("window.__pick = [{name: ['Rui C.'], tel: ['+351 969 999 888', '213 000 000'], email: ['rui@x.pt']}]")
+        pag.locator("#vtch .linha", has_text="Rui Costa").locator("[data-acao=pick]").click()
+        pag.wait_for_function("document.getElementById('vtch').innerText.includes('+351 969 999 888')", timeout=5000)
+        ok(pag.evaluate("window.__picks")[1]["multiple"] is False, "o icone de contacto de uma pessoa escolhe um so contacto (mesmo com outro nome na agenda)")
         pag.locator("#vtch .linha", has_text="Hugo Dias").locator("[data-acao=edita]").click()
         pag.fill("#vtch-tel", "12")
         pag.click("[data-acao=gravaContacto]")
-        ok("não parece válido" in pag.inner_text("#vtch"), "um telemovel invalido e recusado")
+        ok("não parece válido" in pag.inner_text("#vtch"), "um telemovel invalido escrito a mao e recusado")
         pag.click("[data-acao=cancelaEdita]")
+        pag.check("#vtch-s4")         # o Hugo (fora do filtro) entra porque o dono o marcou
         if SHOT:
             pag.screenshot(path=os.path.join(SHOT, "admin-escolher.png"), full_page=True)
 
@@ -142,7 +157,8 @@ try:
         ok("Olá Hugo!" in urllib.parse.unquote(pag.locator("#vtch .linha", has_text="Hugo Dias").locator("a.wa").get_attribute("href")), "cada pessoa leva o seu nome")
         ok(pag.locator("#vtch .linha", has_text="Hugo Dias").locator("a", has_text="SMS").get_attribute("href").startswith("sms:+351937776655?"), "SMS do Hugo")
         ok(pag.locator("#vtch .linha", has_text="Ana Silva").locator("a", has_text="Email").get_attribute("href").startswith("mailto:ana@x.pt?"), "email da Ana (tem email, o Rui nao)")
-        ok(pag.locator("#vtch .linha", has_text="Rui Costa").locator("a", has_text="Email").count() == 0, "sem email: nao mostra o botao")
+        ok(pag.locator("#vtch .linha", has_text="Hugo Dias").locator("a", has_text="Email").count() == 0, "sem email: nao mostra o botao (o Hugo)")
+        ok(pag.locator("#vtch .linha", has_text="Rui Costa").locator("a", has_text="Email").get_attribute("href").startswith("mailto:rui@x.pt?"), "o email vindo do telemovel (Rui) tambem funciona")
         dono_href = pag.locator("a", has_text="Abrir o chat").get_attribute("href")
         st, jd = chamar("/api/chat/sala", k=dono_href.split("#")[1])
         ok(st == 200 and jd["eu"]["papel"] == "dono" and jd["eu"]["nome"] == "Mike", "o link da regie entra como dono, com o nome escolhido")
@@ -168,7 +184,7 @@ try:
         ok("+351 912 345 678" in pag.inner_text("#vtch") and "enviado" in pag.inner_text("#vtch"), "ao reabrir: a sala ja existe e os contactos e os «enviado» ficaram guardados")
         ok(pag.evaluate("(localStorage.getItem('vt.gcontatos')||'').includes('912345678')"), "os contactos so estao no localStorage deste aparelho")
         sj = json.dumps(chamar("/api/admin/chat?key=" + urllib.parse.quote(SIG), pin="dono-teste")[1])
-        ok("912345678" not in sj and "967000111" not in sj and "ana@x.pt" not in sj, "o servidor nunca recebe telefones nem emails")
+        ok("912345678" not in sj and "967000111" not in sj and "969999888" not in sj and "937776655" not in sj and "ana@x.pt" not in sj, "o servidor nunca recebe telefones nem emails")
 
         # ---- acrescentar pessoa (a Marta) mantendo os links
         antes = chamar("/api/admin/chat?key=" + urllib.parse.quote(SIG), pin="dono-teste")[1]
