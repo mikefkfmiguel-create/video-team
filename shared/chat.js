@@ -231,7 +231,7 @@
     crew.forEach(function (c) { (c.days || []).forEach(function (d) { if (d > ultimoDia) ultimoDia = d; }); });
     var temFiltro = crew.some(function (c) { return c.filtrado; }) && crew.some(function (c) { return !c.filtrado; });
     var S = {
-      autAtivo: null, aut: null, msgEnvio: '', busca: null,
+      autAtivo: null, aut: null, msgEnvio: '', busca: null, gerirPessoas: false,
       todos: !temFiltro, doc: null, vista: 'carregar', sel: {}, erro: '', ocupado: false, edita: null, nome: ls(LS_NOME, 'Mike'), msg: ls(LS_MSG, MSG_PADRAO),
       lista: ls(LS_G, []), manual: ls(LS_M, {}), enviados: ls(LS_ENV, {}), copiado: null, importou: ''
     };
@@ -406,7 +406,7 @@
         '<a class="b pri" href="' + esc(link(d.dono.token)) + '" target="_blank" rel="noopener">Abrir o chat</a><button class="b" data-acao="copiar" data-t="' + esc(link(d.dono.token)) + '" data-k="dono">' + (S.copiado === 'dono' ? 'Copiado ✓' : 'Copiar link') + '</button></div></div></div>';
       h += caixaConvite();
       h += caixaExternos();
-      h += '<div class="caixa"><h4>Pessoas (' + d.membros.length + ')</h4>';
+      h += '<div class="caixa"><h4 style="display:flex;justify-content:space-between;align-items:center;gap:8px">Pessoas (' + d.membros.length + ')<button class="b' + (S.gerirPessoas ? ' on' : '') + '" data-acao="gerirTog" style="height:30px;text-transform:none;letter-spacing:0">' + (S.gerirPessoas ? 'Concluir' : 'Gerir pessoas') + '</button></h4>' + (S.gerirPessoas ? '<div class="nota">Aqui mudas o tipo de cada pessoa (participante, só leitura ou gestor), libertas um lugar ou retiras alguém.</div>' : '');
       var gruposG = {}; d.membros.forEach(function (m) { gruposG[m.grupo || ''] = 1; });
       var variasG = Object.keys(gruposG).length > 1;
       d.membros.forEach(function (m) {
@@ -418,9 +418,9 @@
         }
         if (c.e) acoes += '<a class="b" data-acao="enviado" data-id="' + esc(m.id) + '" data-canal="mail" href="mailto:' + esc(c.e) + '?subject=' + encodeURIComponent('Chat do evento ' + (ctx.titulo || '')) + '&body=' + encodeURIComponent(msg) + '">Email' + marca('mail') + '</a>';
         acoes += '<button class="b" data-acao="copiar" data-t="' + esc(msg) + '" data-k="' + esc(m.id) + '">' + (S.copiado === m.id ? 'Copiado ✓' : 'Copiar') + '</button>';
-        acoes += '<select data-acao="tipoSel" data-id="' + esc(m.id) + '" aria-label="Tipo de ' + esc(m.name) + '"><option value="participante"' + (m.tipo === 'participante' || !m.tipo ? ' selected' : '') + '>Participante</option><option value="leitura"' + (m.tipo === 'leitura' ? ' selected' : '') + '>Só leitura</option><option value="gestor"' + (m.tipo === 'gestor' ? ' selected' : '') + '>Gestor</option></select>';
-        if (m.entrou) acoes += '<button class="b" data-acao="liberta" data-id="' + esc(m.id) + '" title="Se alguém escolheu este nome por engano: o aparelho dele perde o acesso e o lugar fica livre">' + (S.conf === 'lib:' + m.id ? 'Libertar? Toca outra vez' : 'Libertar lugar') + '</button>';
-        acoes += '<button class="b perigo" data-acao="remover" data-id="' + esc(m.id) + '" title="Retirar do chat (o link dela deixa de funcionar)">' + (S.conf === 'rem:' + m.id ? 'Retirar? Toca outra vez' : '✕') + '</button>';
+        if (S.gerirPessoas) acoes += '<select data-acao="tipoSel" data-id="' + esc(m.id) + '" aria-label="Tipo de ' + esc(m.name) + '"><option value="participante"' + (m.tipo === 'participante' || !m.tipo ? ' selected' : '') + '>Participante</option><option value="leitura"' + (m.tipo === 'leitura' ? ' selected' : '') + '>Só leitura</option><option value="gestor"' + (m.tipo === 'gestor' ? ' selected' : '') + '>Gestor</option></select>';
+        if (S.gerirPessoas && m.entrou) acoes += '<button class="b" data-acao="liberta" data-id="' + esc(m.id) + '" title="Se alguém escolheu este nome por engano: o aparelho dele perde o acesso e o lugar fica livre">' + (S.conf === 'lib:' + m.id ? 'Libertar? Toca outra vez' : 'Libertar lugar') + '</button>';
+        if (S.gerirPessoas) acoes += '<button class="b perigo" data-acao="remover" data-id="' + esc(m.id) + '" title="Retirar do chat (o link dela deixa de funcionar)">' + (S.conf === 'rem:' + m.id ? 'Retirar? Toca outra vez' : '✕') + '</button>';
         var enviado = S.enviados[enviadoKey(m.id, 'wa')] || S.enviados[enviadoKey(m.id, 'sms')] || S.enviados[enviadoKey(m.id, 'mail')];
         h += '<div class="linha">' + avatar(m.name, m.id) + '<div class="nm">' + esc(m.name) + (variasG ? '<small>' + esc(m.grupo || '') + '</small>' : '') +
           '<div style="margin-top:3px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">' + chipContacto(p, c) + (enviado ? '<span class="tag ok">enviado</span>' : '') + (m.entrou ? '<span class="tag ok">entrou</span>' : '') + (m.externo ? '<span class="tag">de fora</span>' : '') +
@@ -433,7 +433,7 @@
         new Date(d.expira).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }) + '. Depois, o chat e todas as mensagens apagam-se sozinhos.</div>' +
         '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="b" data-acao="prolonga">Prolongar 1 dia</button><button class="b" data-acao="maisPessoas">Acrescentar pessoas</button><button class="b perigo" data-acao="fechar">' + (S.conf === 'fechar' ? 'Tens a certeza? Toca outra vez (apaga tudo)' : 'Fechar o chat') + '</button></div></div>';
       var pe = porEnviar();
-      h += '<div class="rodape"><span class="nota">' + (S.msgEnvio ? esc(S.msgEnvio) : (pe.length ? pe.length + ' por enviar · próxima: ' + esc(pe[0].name) : 'Todas as que têm telemóvel já foram abertas ✓')) + '</span>' +
+      if (pe.length || S.msgEnvio) h += '<div class="rodape"><span class="nota">' + (S.msgEnvio ? esc(S.msgEnvio) : pe.length + ' por enviar · próxima: ' + esc(pe[0].name)) + '</span>' +
         '<button class="b wa" data-acao="proxima"' + (pe.length ? '' : ' disabled') + '>WhatsApp: próxima pessoa</button></div>';
       return h;
     }
@@ -571,6 +571,7 @@
         }).catch(function () { S.aut.erro = 'Sem ligação ao servidor.'; desenhar(); });
         return;
       }
+      if (a === 'gerirTog') { S.gerirPessoas = !S.gerirPessoas; desenhar(); return; }
       if (a === 'extAdd') {
         var nomeX = ((document.getElementById('vtch-extnome') || {}).value || '').trim(), tipoX = (document.getElementById('vtch-exttipo') || {}).value || 'participante';
         var telX = fone((document.getElementById('vtch-exttel') || {}).value), telBruto = ((document.getElementById('vtch-exttel') || {}).value || '').trim();

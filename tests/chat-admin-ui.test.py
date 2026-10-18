@@ -206,6 +206,9 @@ try:
         pag.wait_for_selector("#vtch [data-acao=fechar]", timeout=15000)
         ok("Chat criado · 3 pessoas" in pag.inner_text("#vtch .top"), "chat criado com 3 pessoas")
         ok(pag.locator("#vtch .linha").count() == 4, "gerir: a regie + 3 pessoas")
+        ok(pag.locator("[data-acao=tipoSel]").count() == 0 and pag.locator("[data-acao=remover]").count() == 0, "por omissao a lista fica limpa: sem seletores de tipo nem «retirar»")
+        pag.click("[data-acao=gerirTog]")
+        ok(pag.locator("[data-acao=tipoSel]").count() == 3 and pag.locator("[data-acao=remover]").count() == 3, "«Gerir pessoas» mostra o tipo, «libertar» e «retirar» de cada uma")
 
         # ---- links
         wa = pag.locator("#vtch .linha", has_text="Ana Silva").locator("a.wa")
@@ -294,6 +297,8 @@ try:
         ok(len(depois["membros"]) == 4 and [m for m in depois["membros"] if m["id"] == "1"][0]["token"] == tok_ana, "a Marta entra e o link da Ana (ja enviado) nao muda")
 
         # ---- pessoas de fora e tipos (o dono, no Video Team)
+        if pag.locator("[data-acao=tipoSel]").count() == 0:
+            pag.click("[data-acao=gerirTog]")          # a pagina foi reaberta: «Gerir pessoas» volta a estar desligado
         ok("pessoas de fora da escala" in pag.inner_text("#vtch").lower() and pag.locator("#vtch-exttipo option").count() == 3, "caixa «Pessoas de fora da escala» com os tres tipos")
         pag.fill("#vtch-extnome", "Cliente Externo")
         pag.select_option("#vtch-exttipo", "leitura")

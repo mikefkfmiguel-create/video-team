@@ -93,6 +93,7 @@ class BD:
         CREATE INDEX IF NOT EXISTS msg_sala ON msg (sala, id);
         CREATE TABLE IF NOT EXISTS push (endpoint TEXT PRIMARY KEY, token TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, ts INTEGER NOT NULL);
         CREATE INDEX IF NOT EXISTS push_token ON push (token);
+        CREATE TABLE IF NOT EXISTS uso (dia TEXT PRIMARY KEY, pedidos INTEGER NOT NULL DEFAULT 0, msgs INTEGER NOT NULL DEFAULT 0, bytes_saida INTEGER NOT NULL DEFAULT 0, ws_pico INTEGER NOT NULL DEFAULT 0, erros INTEGER NOT NULL DEFAULT 0);
         CREATE TABLE IF NOT EXISTS convite (sala TEXT PRIMARY KEY REFERENCES sala(id) ON DELETE CASCADE, token TEXT NOT NULL UNIQUE, ativo INTEGER NOT NULL DEFAULT 1, criado INTEGER NOT NULL);
         """)
         cols = [c['name'] for c in self.c.execute('PRAGMA table_info(membro)').fetchall()]
@@ -157,6 +158,8 @@ class Chat:
         self.ws = {}              # sala -> set de (ws, pid, nome, papel)
         self.recentes = {}        # (sala, pid) -> instantes
         self.falhas = {}          # ip -> instantes (tokens invalidos)
+        self.inicio = time.time()
+        self.uso = {}             # dia -> {pedidos, msgs, bytes, ws_pico, erros} ainda por gravar (a vigia le isto + a tabela `uso`)
         self.tarefas = set()
 
     # ---- identificacao
@@ -187,6 +190,47 @@ class Chat:
         if not self.segredo or not hmac.compare_digest(dado.encode(), self.segredo.encode()):
             raise web.HTTPUnauthorized(text=json.dumps({'error': 'admin'}), content_type='application/json')
 
+    def contar(self, **kw):
+        d = time.strftime('%Y-%m-%d')
+        u = self.uso.setdefault(d, {'pedidos': 0, 'msgs': 0, 'bytes': 0, 'ws_pico': 0, 'erros': 0})
+        for k, v in kw.items():
+            if k == 'ws_pico':
+                u['ws_pico'] = max(u['ws_pico'], v)
+            else:
+                u[k] = u.get(k, 0) + v
+
+    def gravar_uso(self):
+        for d, u in list(self.uso.items()):
+            self.bd.x('INSERT INTO uso (dia,pedidos,msgs,bytes_saida,ws_pico,erros) VALUES (?,?,?,?,?,?) ON CONFLICT(dia) DO UPDATE SET pedidos=pedidos+excluded.pedidos, msgs=msgs+excluded.msgs, '
+                      'bytes_saida=bytes_saida+excluded.bytes_saida, ws_pico=MAX(ws_pico,excluded.ws_pico), erros=erros+excluded.erros', d, u['pedidos'], u['msgs'], u['bytes'], u['ws_pico'], u['erros'])
+            u.update(pedidos=0, msgs=0, bytes=0, erros=0)           # o pico de hoje fica (e e gravado com MAX)
+        self.bd.x("DELETE FROM uso WHERE dia < date('now', '-90 day')")
+
+    def metricas(self, pasta):
+        self.gravar_uso()
+        bd = self.bd
+        n = lambda sql, *a: bd.um(sql, *a)['n']
+        rss = 0
+        try:
+            with open('/proc/self/status') as f:
+                for ln in f:
+                    if ln.startswith('VmRSS:'):
+                        rss = int(ln.split()[1]) * 1024
+        except OSError:
+            pass
+        tam = lambda nome: os.path.getsize(os.path.join(pasta, nome)) if os.path.exists(os.path.join(pasta, nome)) else 0
+        maior = bd.um('SELECT s.evento AS evento, (SELECT COUNT(*) FROM membro WHERE sala=s.id) AS membros, (SELECT COUNT(*) FROM msg WHERE sala=s.id) AS msgs FROM sala s ORDER BY msgs DESC LIMIT 1')
+        return {
+            'agora': agora_ms(), 'uptime_s': int(time.time() - self.inicio), 'rss_bytes': rss,
+            'db_bytes': tam('chat.db'), 'wal_bytes': tam('chat.db-wal'),
+            'salas': n('SELECT COUNT(*) AS n FROM sala'), 'membros': n('SELECT COUNT(*) AS n FROM membro'), 'externos': n('SELECT COUNT(*) AS n FROM membro WHERE externo=1'),
+            'mensagens': n('SELECT COUNT(*) AS n FROM msg'), 'texto_bytes': n('SELECT COALESCE(SUM(LENGTH(texto)),0) AS n FROM msg'),
+            'push_subscricoes': n('SELECT COUNT(*) AS n FROM push'), 'ws_ativos': sum(len(v) for v in self.ws.values()),
+            'maior_sala': dict(maior) if maior else None,
+            'salas_lista': [dict(x) for x in bd.q('SELECT s.evento AS evento, s.expira AS expira, (SELECT COUNT(*) FROM membro WHERE sala=s.id) AS membros, (SELECT COUNT(*) FROM msg WHERE sala=s.id) AS msgs FROM sala s ORDER BY s.expira')],
+            'dias': [dict(x) for x in bd.q('SELECT dia, pedidos, msgs, bytes_saida, ws_pico, erros FROM uso ORDER BY dia DESC LIMIT 30')],
+        }
+
     @staticmethod
     def gere(q):
         return q['papel'] == 'dono' or q.get('tipo') == 'gestor'
@@ -210,6 +254,7 @@ class Chat:
                 continue
             try:
                 await w.send_str(s)
+                self.contar(bytes=len(s))
             except Exception:
                 pass
 
@@ -229,6 +274,7 @@ class Chat:
         e_aviso = 1 if (aviso and self.gere(q)) else 0
         cur = self.bd.x('INSERT INTO msg (sala,pid,nome,texto,ts,aviso,fixa) VALUES (?,?,?,?,?,?,?)', q['sala'], q['pid'], q['nome'], texto, agora, e_aviso, e_aviso)
         mid = cur.lastrowid
+        self.contar(msgs=1)
         total = self.bd.um('SELECT COUNT(*) AS n FROM msg WHERE sala=?', q['sala'])['n']
         if total > MAX_MENSAGENS:
             self.bd.x('DELETE FROM msg WHERE id IN (SELECT id FROM msg WHERE sala=? ORDER BY id LIMIT ?)', q['sala'], total - MAX_MENSAGENS)
@@ -311,7 +357,21 @@ async def ler_json(req):
 
 def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
     chat = Chat(pasta, segredo, vapid_sub)
-    app = web.Application(client_max_size=64 * 1024)
+    @web.middleware
+    async def contar_pedidos(req, handler):
+        try:
+            resp = await handler(req)
+        except web.HTTPException as e:
+            chat.contar(pedidos=1, erros=1 if e.status >= 500 else 0)
+            raise
+        except Exception:
+            chat.contar(pedidos=1, erros=1)
+            raise
+        corpo = getattr(resp, 'body', None)
+        chat.contar(pedidos=1, bytes=len(corpo) if isinstance(corpo, (bytes, bytearray)) else 0)
+        return resp
+
+    app = web.Application(client_max_size=64 * 1024, middlewares=[contar_pedidos])
     app['chat'] = chat
     r = web.RouteTableDef()
     P = PREFIXO
@@ -468,6 +528,11 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
         else:
             chat.bd.x('UPDATE convite SET ativo=? WHERE sala=?', ativo, sala)
         return json_resp(vista_dono(chat.bd, sala))
+
+    @r.get(P + '/api/admin/metricas')
+    async def admin_metricas(req):
+        chat.exige_admin(req)
+        return json_resp(chat.metricas(pasta))
 
     @r.post(P + '/api/admin/prolongar')
     async def admin_prolongar(req):
@@ -721,6 +786,7 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
         sala = q['sala']
         ent = (ws, q['pid'], q['nome'], q['papel'])
         chat.ws.setdefault(sala, set()).add(ent)
+        chat.contar(ws_pico=sum(len(v) for v in chat.ws.values()))
         await ws.send_str(json.dumps({'t': 'ola', **chat.listar(sala, 0), 'online': chat.presentes(sala)}, ensure_ascii=False))
         await chat.difundir(sala, {'t': 'online', 'online': chat.presentes(sala)}, exceto=ws)
         try:
@@ -758,6 +824,7 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
             while True:
                 try:
                     chat.limpar_expiradas()
+                    chat.gravar_uso()
                 except Exception:
                     log.exception('limpeza')
                 await asyncio.sleep(600)

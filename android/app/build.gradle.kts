@@ -20,8 +20,8 @@ android {
         applicationId = "com.mike.videoteam"
         minSdk = 26
         targetSdk = 35
-        versionCode = 14
-        versionName = "1.13"
+        versionCode = 15
+        versionName = "1.14"
         buildConfigField("String", "VT_USER", "\"${secret("user")}\"")
         buildConfigField("String", "VT_PASSWORD", "\"${secret("password")}\"")
         buildConfigField("String", "VT_SEARCH", "\"${secret("search", "video")}\"")

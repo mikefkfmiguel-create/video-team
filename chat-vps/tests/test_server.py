@@ -320,6 +320,13 @@ async def main():
         tm.cancel()
         await wm.close()
 
+        # ---- metricas (para a vigia)
+        ok((await api('GET', '/chat/api/admin/metricas'))[0] == 401, 'as metricas pedem o segredo')
+        s_, mt = await api('GET', '/chat/api/admin/metricas', admin=SEGREDO)
+        ok(s_ == 200 and all(k in mt for k in ('db_bytes', 'wal_bytes', 'rss_bytes', 'salas', 'membros', 'mensagens', 'ws_ativos', 'push_subscricoes', 'dias', 'salas_lista', 'uptime_s')), 'as metricas trazem tamanhos, contagens e o uso por dia')
+        ok(mt['salas'] >= 1 and mt['mensagens'] >= 1 and mt['db_bytes'] > 0 and mt['dias'][0]['pedidos'] > 10 and mt['dias'][0]['msgs'] >= 1 and mt['dias'][0]['bytes_saida'] > 1000, 'e contam de facto (pedidos, mensagens e bytes de hoje)')
+        ok('token' not in json.dumps(mt) and tok['12'] not in json.dumps(mt), 'sem expor links nem conteudo das mensagens')
+
         # ---- retirar / fechar
         fechou = []
 
