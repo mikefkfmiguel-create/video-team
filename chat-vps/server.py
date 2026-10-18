@@ -510,7 +510,7 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
 
     async def manifesto(req):
         k = req.query.get('k', '')
-        start, nome, idm = P + '/', 'Video Team · Chat', P + '/'
+        start, nome, idm = P + '/', 'Video Team · Chat', P + '/app'      # identificador proprio (nao colide com o do Video Team nem com instalacoes antigas)
         if TOKEN_RE.match(k):
             q = chat.quem(req)
             if q:
@@ -522,9 +522,9 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
             'id': idm, 'name': nome, 'short_name': 'VT Chat', 'description': 'Chat do evento', 'start_url': start, 'scope': P + '/', 'display': 'standalone',
             'background_color': '#0C1020', 'theme_color': '#0C1020', 'lang': 'pt-PT',
             'icons': [
-                {'src': P + '/icons/icon-192.png', 'sizes': '192x192', 'type': 'image/png'},
-                {'src': P + '/icons/icon-512.png', 'sizes': '512x512', 'type': 'image/png'},
-                {'src': P + '/icons/icon-maskable-512.png', 'sizes': '512x512', 'type': 'image/png', 'purpose': 'maskable'},
+                {'src': P + '/icons/chat-192.png', 'sizes': '192x192', 'type': 'image/png'},
+                {'src': P + '/icons/chat-512.png', 'sizes': '512x512', 'type': 'image/png'},
+                {'src': P + '/icons/chat-maskable-512.png', 'sizes': '512x512', 'type': 'image/png', 'purpose': 'maskable'},
             ],
         }
         return web.Response(text=json.dumps(corpo, ensure_ascii=False), content_type='application/manifest+json', headers={'Cache-Control': 'no-store'})

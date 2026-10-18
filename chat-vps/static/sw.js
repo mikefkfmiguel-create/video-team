@@ -1,7 +1,7 @@
 // Video Team · Chat — service worker (PWA): abre mesmo sem rede (a casca da pagina) e mostra as notificacoes push.
 // Rede primeiro, cache so quando nao ha rede, para uma correcao aparecer logo. As chamadas a /chat/api/ nunca passam pela cache.
-const CACHE = 'vtchat-v2';
-const CASCA = ['/chat/', '/chat/icons/icon-192.png', '/chat/icons/icon-512.png', '/chat/icons/favicon.png'];
+const CACHE = 'vtchat-v3';
+const CASCA = ['/chat/', '/chat/icons/chat-192.png', '/chat/icons/chat-512.png', '/chat/icons/chat-favicon.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => Promise.all(CASCA.map((u) => c.add(new Request(u, { cache: 'reload' })).catch(() => {})))));
@@ -32,7 +32,7 @@ self.addEventListener('push', (e) => {
     body: d.b || 'Mensagem nova',
     tag: d.g || 'vt-chat',          // as mensagens da mesma sala substituem-se umas as outras
     renotify: true,
-    icon: '/chat/icons/icon-192.png',
+    icon: '/chat/icons/chat-192.png',
     badge: '/chat/icons/badge-96.png',      // icone pequeno da barra de estado: so branco sobre transparente (o Android pinta-o); com o icone a cores aparecia um quadrado cinzento
     data: { u: d.u || '/chat/' },
   }));
