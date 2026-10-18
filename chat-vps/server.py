@@ -94,6 +94,7 @@ class BD:
         CREATE TABLE IF NOT EXISTS push (endpoint TEXT PRIMARY KEY, token TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, ts INTEGER NOT NULL);
         CREATE INDEX IF NOT EXISTS push_token ON push (token);
         CREATE TABLE IF NOT EXISTS uso (dia TEXT PRIMARY KEY, pedidos INTEGER NOT NULL DEFAULT 0, msgs INTEGER NOT NULL DEFAULT 0, bytes_saida INTEGER NOT NULL DEFAULT 0, ws_pico INTEGER NOT NULL DEFAULT 0, erros INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS eventos (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, tipo TEXT NOT NULL, sala TEXT NOT NULL, evento TEXT NOT NULL, dados TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS convite (sala TEXT PRIMARY KEY REFERENCES sala(id) ON DELETE CASCADE, token TEXT NOT NULL UNIQUE, ativo INTEGER NOT NULL DEFAULT 1, criado INTEGER NOT NULL);
         """)
         cols = [c['name'] for c in self.c.execute('PRAGMA table_info(membro)').fetchall()]
@@ -101,6 +102,11 @@ class BD:
             self.c.execute("ALTER TABLE membro ADD COLUMN tipo TEXT NOT NULL DEFAULT 'participante'")
         if 'externo' not in cols:
             self.c.execute('ALTER TABLE membro ADD COLUMN externo INTEGER NOT NULL DEFAULT 0')   # 1 = nao vem da escala (acrescentado a mao)
+        sc = [c['name'] for c in self.c.execute('PRAGMA table_info(sala)').fetchall()]
+        if 'pico_ws' not in sc:
+            self.c.execute('ALTER TABLE sala ADD COLUMN pico_ws INTEGER NOT NULL DEFAULT 0')
+        if 'pushes' not in sc:
+            self.c.execute('ALTER TABLE sala ADD COLUMN pushes INTEGER NOT NULL DEFAULT 0')
         if 'reclamado' not in cols:
             self.c.execute('ALTER TABLE membro ADD COLUMN reclamado INTEGER NOT NULL DEFAULT 0')   # o lugar ja foi tomado (pelo link pessoal ou pelo geral)
             # quem ja escreveu no chat (versao anterior, sem link geral) ja tem o lugar
@@ -198,6 +204,52 @@ class Chat:
                 u['ws_pico'] = max(u['ws_pico'], v)
             else:
                 u[k] = u.get(k, 0) + v
+
+    def foto_sala(self, sala, pasta):
+        """O peso de uma sala neste momento (para o relatorio de quando e criada e de quando e apagada)."""
+        bd = self.bd
+        s_ = bd.um('SELECT * FROM sala WHERE id=?', sala)
+        if not s_:
+            return None
+        n = lambda sql, *a: bd.um(sql, *a)['n']
+        msgs = n('SELECT COUNT(*) AS n FROM msg WHERE sala=?', sala)
+        texto = n('SELECT COALESCE(SUM(LENGTH(texto)),0) AS n FROM msg WHERE sala=?', sala)
+        membros = n('SELECT COUNT(*) AS n FROM membro WHERE sala=?', sala)
+        db = 0
+        for nome in ('chat.db', 'chat.db-wal'):
+            try:
+                db += os.path.getsize(os.path.join(pasta, nome))
+            except OSError:
+                pass
+        rss = 0
+        try:
+            with open('/proc/self/status') as f:
+                for ln in f:
+                    if ln.startswith('VmRSS:'):
+                        rss = int(ln.split()[1]) * 1024
+        except OSError:
+            pass
+        try:
+            import shutil
+            livre = shutil.disk_usage(pasta).free
+        except OSError:
+            livre = 0
+        return {
+            'criada': s_['criada'], 'expira': s_['expira'], 'membros': membros,
+            'externos': n('SELECT COUNT(*) AS n FROM membro WHERE sala=? AND externo=1', sala), 'gestores': n("SELECT COUNT(*) AS n FROM membro WHERE sala=? AND tipo='gestor'", sala),
+            'entraram': n('SELECT COUNT(*) AS n FROM membro WHERE sala=? AND reclamado=1', sala),
+            'mensagens': msgs, 'texto_bytes': texto, 'pico_ws': s_['pico_ws'], 'pushes': s_['pushes'],
+            'push_subscricoes': n('SELECT COUNT(*) AS n FROM push WHERE token IN (SELECT token FROM membro WHERE sala=?) OR token=(SELECT dono_token FROM sala WHERE id=?)', sala, sala),
+            'espaco_estimado_bytes': texto + msgs * 160 + membros * 220,       # o que a sala ocupa na base de dados (texto + linhas)
+            'db_bytes': db, 'rss_bytes': rss, 'disco_livre': livre,
+            'salas_ativas': n('SELECT COUNT(*) AS n FROM sala'), 'ws_ativos': sum(len(v) for v in self.ws.values()),
+        }
+
+    def evento(self, tipo, sala, nome, pasta, foto=None):
+        """Regista «criada», «fechada» (pelo dono) ou «expirada» (apagada sozinha), com a foto do peso. Guarda os ultimos 500."""
+        foto = foto or self.foto_sala(sala, pasta) or {}
+        self.bd.x('INSERT INTO eventos (ts,tipo,sala,evento,dados) VALUES (?,?,?,?,?)', agora_ms(), tipo, sala, nome, json.dumps(foto, ensure_ascii=False))
+        self.bd.x('DELETE FROM eventos WHERE id <= (SELECT MAX(id) FROM eventos) - 500')
 
     def gravar_uso(self):
         for d, u in list(self.uso.items()):
@@ -314,15 +366,20 @@ class Chat:
             dados = dict(base, u=PREFIXO + '/#' + token)      # o clique abre o chat ja com o link pessoal (o iPhone nao partilha o armazenamento)
             for r in self.bd.q('SELECT endpoint, p256dh, auth FROM push WHERE token=?', token):
                 res = await loop.run_in_executor(None, self.vapid.enviar, {'endpoint': r['endpoint'], 'keys': {'p256dh': r['p256dh'], 'auth': r['auth']}}, dados)
+                if res == 'ok':
+                    self.bd.x('UPDATE sala SET pushes=pushes+1 WHERE id=?', sala)
                 if res == 'morta':
                     self.bd.x('DELETE FROM push WHERE endpoint=?', r['endpoint'])
                 elif res != 'ok':
                     log.info('push falhou: %s', res)
 
     # ---- limpeza
-    def limpar_expiradas(self):
+    def limpar_expiradas(self, pasta=None):
         ids = [r['id'] for r in self.bd.q('SELECT id FROM sala WHERE expira < ?', agora_ms())]     # acabou o evento: apaga-se tudo
         for i in ids:
+            nome_ = self.bd.um('SELECT evento FROM sala WHERE id=?', i)
+            if nome_ and pasta:
+                self.evento('expirada', i, nome_['evento'], pasta)
             self.bd.x('DELETE FROM push WHERE token IN (SELECT token FROM membro WHERE sala=?)', i)
             self.bd.x('DELETE FROM sala WHERE id=?', i)
         if ids:
@@ -464,6 +521,8 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
             raise
         v = vista_dono(bd, sala)
         v['novo'] = novo
+        if novo:
+            chat.evento('criada', sala, evento, pasta)
         return json_resp(v)
 
     @r.post(P + '/api/admin/adicionar')
@@ -529,6 +588,17 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
             chat.bd.x('UPDATE convite SET ativo=? WHERE sala=?', ativo, sala)
         return json_resp(vista_dono(chat.bd, sala))
 
+    @r.get(P + '/api/admin/eventos')
+    async def admin_eventos(req):
+        chat.exige_admin(req)
+        try:
+            depois = int(req.query.get('depois', '0'))
+        except ValueError:
+            depois = 0
+        rows = chat.bd.q('SELECT id, ts, tipo, sala, evento, dados FROM eventos WHERE id > ? ORDER BY id LIMIT 200', depois)
+        return json_resp({'eventos': [{'id': x['id'], 'ts': x['ts'], 'tipo': x['tipo'], 'evento': x['evento'], 'dados': json.loads(x['dados'] or '{}')} for x in rows],
+                          'ultimo': (chat.bd.um('SELECT COALESCE(MAX(id),0) AS n FROM eventos')['n'])})
+
     @r.get(P + '/api/admin/metricas')
     async def admin_metricas(req):
         chat.exige_admin(req)
@@ -572,6 +642,9 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
         chat.exige_admin(req)
         b = await ler_json(req)
         sala = id_da_sala(limpa(b.get('key'), 300))
+        sx = chat.bd.um('SELECT evento FROM sala WHERE id=?', sala)
+        if sx:
+            chat.evento('fechada', sala, sx['evento'], pasta)           # a foto do peso e tirada ANTES de apagar
         for (w, _p, _n, _pp) in list(chat.ws.get(sala, set())):
             await w.close(code=4001, message=b'sala fechada')
         chat.bd.x('DELETE FROM push WHERE token IN (SELECT token FROM membro WHERE sala=?) OR token IN (SELECT dono_token FROM sala WHERE id=?)', sala, sala)
@@ -787,6 +860,7 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
         ent = (ws, q['pid'], q['nome'], q['papel'])
         chat.ws.setdefault(sala, set()).add(ent)
         chat.contar(ws_pico=sum(len(v) for v in chat.ws.values()))
+        chat.bd.x('UPDATE sala SET pico_ws=MAX(pico_ws,?) WHERE id=?', len(chat.ws.get(sala, set())), sala)
         await ws.send_str(json.dumps({'t': 'ola', **chat.listar(sala, 0), 'online': chat.presentes(sala)}, ensure_ascii=False))
         await chat.difundir(sala, {'t': 'online', 'online': chat.presentes(sala)}, exceto=ws)
         try:
@@ -823,7 +897,7 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
         async def laco():
             while True:
                 try:
-                    chat.limpar_expiradas()
+                    chat.limpar_expiradas(pasta)
                     chat.gravar_uso()
                 except Exception:
                     log.exception('limpeza')

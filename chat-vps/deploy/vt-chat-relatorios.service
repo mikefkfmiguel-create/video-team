@@ -1,0 +1,20 @@
+[Unit]
+Description=Video Team - relatorio por email de cada sala do chat criada e apagada
+After=network-online.target vt-chat.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/vt-chat
+# VTCHAT_SECRET (o do chat), a conta de email que a Things On ja usa (so e lida para enviar) e o destino dos relatorios (VTCHAT_RELATORIO_PARA)
+EnvironmentFile=/etc/vt-chat.env
+EnvironmentFile=/etc/things-on-admin.mail.env
+EnvironmentFile=/etc/vt-chat-relatorios.env
+ExecStart=/opt/vt-chat/venv/bin/python /opt/vt-chat/notificar.py
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/vt-chat-relatorios
+TimeoutStartSec=90

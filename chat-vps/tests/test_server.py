@@ -327,6 +327,19 @@ async def main():
         ok(mt['salas'] >= 1 and mt['mensagens'] >= 1 and mt['db_bytes'] > 0 and mt['dias'][0]['pedidos'] > 10 and mt['dias'][0]['msgs'] >= 1 and mt['dias'][0]['bytes_saida'] > 1000, 'e contam de facto (pedidos, mensagens e bytes de hoje)')
         ok('token' not in json.dumps(mt) and tok['12'] not in json.dumps(mt), 'sem expor links nem conteudo das mensagens')
 
+        # ---- eventos para a vigia e para o relatorio por email: sala criada / fechada / expirada
+        ok((await api('GET', '/chat/api/admin/eventos'))[0] == 401, 'os eventos pedem o segredo')
+        s_, evs = await api('GET', '/chat/api/admin/eventos?depois=0', admin=SEGREDO)
+        criadas = [e for e in evs['eventos'] if e['tipo'] == 'criada']
+        ok(s_ == 200 and len(criadas) >= 2 and criadas[0]['evento'] == 'Congresso Teste' and criadas[0]['dados']['membros'] == 3, 'cada sala criada fica registada, com o numero de pessoas')
+        ok(all(k in criadas[0]['dados'] for k in ('db_bytes', 'rss_bytes', 'disco_livre', 'salas_ativas', 'expira')), '...e com o peso do servidor nesse momento')
+        ultimo_id = evs['ultimo']
+        s_, nvs = await api('GET', '/chat/api/admin/eventos?depois=%d' % ultimo_id, admin=SEGREDO)
+        ok(nvs['eventos'] == [], 'perguntar «depois do ultimo» nao devolve nada (para o aviso so enviar o que e novo)')
+        s_, _ = await api('POST', '/chat/api/admin/criar', admin=SEGREDO, corpo={'key': KEY, 'label': 'Congresso Teste', 'membros': MEMBROS})
+        s_, nvs = await api('GET', '/chat/api/admin/eventos?depois=%d' % ultimo_id, admin=SEGREDO)
+        ok(nvs['eventos'] == [], 'acrescentar pessoas a uma sala que ja existe nao conta como sala criada')
+
         # ---- retirar / fechar
         fechou = []
 
@@ -352,6 +365,9 @@ async def main():
         await wb.close()
         tb.cancel()
         s, fe = await api('POST', '/chat/api/admin/fechar', admin=SEGREDO, corpo={'key': KEY})
+        s_, ev_f = await api('GET', '/chat/api/admin/eventos?depois=%d' % ultimo_id, admin=SEGREDO)
+        fechada = [e for e in ev_f['eventos'] if e['tipo'] == 'fechada']
+        ok(len(fechada) == 1 and fechada[0]['evento'] == 'Congresso Teste' and fechada[0]['dados']['mensagens'] >= 5 and fechada[0]['dados']['texto_bytes'] > 50 and fechada[0]['dados']['pico_ws'] >= 1 and fechada[0]['dados']['espaco_estimado_bytes'] > fechada[0]['dados']['texto_bytes'], 'fechar a sala regista «fechada» com o que ela pesava (mensagens, texto, pico de ligacoes, espaco libertado)')
         ok(fe['ok'] and (await api('GET', '/chat/api/sala', k=tok['12']))[0] == 401 and (await api('GET', '/chat/api/sala', k=c['dono']['token']))[0] == 401, 'fechar: todos os links invalidos')
         ok(chat.bd.um('SELECT COUNT(*) AS n FROM msg')['n'] == 0 and chat.bd.um('SELECT COUNT(*) AS n FROM push')['n'] == 0, 'mensagens e notificacoes apagadas')
         s, nova = await api('POST', '/chat/api/admin/criar', admin=SEGREDO, corpo={'key': KEY, 'label': 'Congresso Teste', 'membros': MEMBROS})
@@ -376,7 +392,9 @@ async def main():
         # ---- expirar
         chat.bd.x('UPDATE sala SET expira=? WHERE id=?', S.agora_ms() - 1000, nova['sala'])
         ok((await api('GET', '/chat/api/sala', k=nova['membros'][0]['token']))[0] == 401, 'passado o prazo o link deixa de entrar')
-        ok(chat.limpar_expiradas() >= 1 and chat.bd.um('SELECT 1 FROM sala WHERE id=?', nova['sala']) is None, 'a limpeza apaga as salas expiradas')
+        n_ev = chat.bd.um('SELECT COUNT(*) AS n FROM eventos')['n']
+        ok(chat.limpar_expiradas(pasta) >= 1 and chat.bd.um("SELECT COUNT(*) AS n FROM eventos WHERE tipo='expirada'")['n'] == 1, 'a limpeza regista «expirada» (apagada sozinha) com a foto do peso')
+        ok(chat.bd.um('SELECT 1 FROM sala WHERE id=?', nova['sala']) is None, 'a limpeza apaga as salas expiradas')
         ok('912' not in open(os.path.join(pasta, 'chat.db'), 'rb').read().decode('latin-1'), 'a base de dados nao tem telefones')
 
     await srv.close()
