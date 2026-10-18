@@ -96,6 +96,18 @@ try:
         ana.wait_for_function("document.getElementById('subTxt').textContent.includes('3 online')", timeout=10000)
         ok(True, 'a Ana ve «3 online · 3 pessoas»')
 
+        # ---- adaptado ao telemovel: nada passa da largura do ecra (a regie tem o botao «Aviso» e o rodape mais largo)
+        tel_estreito = nav.new_context(viewport={'width': 260, 'height': 600}, has_touch=True, is_mobile=True, device_scale_factor=2)   # equivale a um telemovel com zoom de pagina ou letra grande
+        regie_tel = tel_estreito.new_page()
+        regie_tel.goto(B + '/chat/#' + c['dono']['token'])
+        regie_tel.wait_for_selector('#app:not([hidden])', timeout=15000)
+        regie_tel.fill('#texto', 'uma mensagem comprida ' * 12)
+        medidas = regie_tel.evaluate("""(() => { const w = innerWidth, r = (s) => document.querySelector(s).getBoundingClientRect();
+          return { w, sw: document.documentElement.scrollWidth, vv: visualViewport.width, app: r('#app').width, appL: r('#app').left, enviar: r('#enviar').right, enviarL: r('#enviar').left, aviso: r('#modoAviso').left, logo: r('.logo').left, sino: r('#btPessoas').right }; })()""")
+        ok(medidas['sw'] <= medidas['w'] and medidas['vv'] <= medidas['w'] + 1, 'a pagina nao e mais larga que o telemovel (scrollWidth %d, ecra %d)' % (medidas['sw'], medidas['w']))
+        ok(medidas['enviar'] <= medidas['w'] and medidas['aviso'] >= 0 and medidas['logo'] >= 0 and medidas['sino'] <= medidas['w'] and abs(medidas['appL']) < 1, 'cabecalho e rodape (Aviso, caixa, enviar) cabem no ecra: %s' % {k: round(v) for k, v in medidas.items()})
+        regie_tel.close()
+
         # ---- notificacoes
         ana.wait_for_selector('#dica:not([hidden])', timeout=8000)
         ok('avisado quando chegar uma mensagem' in ana.inner_text('#dica') and ana.is_visible('#btSino'), 'pergunta se quer notificacoes (faixa e sino)')
