@@ -84,6 +84,20 @@
   .pessoa .n small { display: block; color: var(--mut); font-size: 12px; }
   .pessoa .pt { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
   .pessoa .pt.on { background: var(--ok); }
+  .tg { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--soft); color: var(--mut); white-space: nowrap; margin-left: 6px; }
+  .tg.g { background: #f5b80030; color: #8a6500; } .tg.l { background: #8f9ab033; }
+  .pessoa .gx { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; width: 100%; margin: 0 0 6px 40px; }
+  .pessoa { flex-wrap: wrap; }
+  .gx select, #gxNome { height: 36px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); padding: 0 8px; font: inherit; font-size: 14px; }
+  .gx button, #gxAdd, #gxCopia, .gx a { height: 36px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; text-decoration: none; }
+  .gx button.x { color: var(--err); border-color: var(--err); }
+  #gestaoBox { margin-bottom: 12px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); }
+  #gestaoBox h3 { margin: 0 0 8px; font-size: 14px; }
+  #gestaoBox .lin { display: flex; gap: 6px; flex-wrap: wrap; }
+  #gestaoBox input { flex: 1; min-width: 140px; padding: 0 10px; }
+  #gxRes { margin-top: 8px; font-size: 13px; word-break: break-all; }
+  #gxRes .lk { font-family: ui-monospace, Menlo, monospace; font-size: 12px; margin: 6px 0; }
+  #gxErro { color: var(--err); margin-top: 6px; font-size: 13px; }
   /* ecra de erro / entrada */
   #convite { position: fixed; inset: 0; overflow: auto; padding: 16px; padding-top: max(16px, env(safe-area-inset-top)); background: var(--bg); }
   #convite .col { max-width: 460px; margin: 0 auto; }
@@ -123,14 +137,14 @@
   <main id="lista" role="log" aria-live="polite" aria-label="Mensagens"></main>
   <button id="novas" hidden>↓ Mensagens novas</button>
   <footer>
-    <button id="modoAviso" aria-pressed="false" hidden title="Enviar como aviso fixo para todos">📌 Aviso</button>
+    <button id="modoAviso" aria-pressed="false" hidden title="A mensagem seguinte fica fixa no topo, para todos">📌 Fixar</button>
     <textarea id="texto" rows="1" placeholder="Escreve uma mensagem" maxlength="2000" enterkeyhint="send" aria-label="Mensagem"></textarea>
     <button id="enviar" aria-label="Enviar">➤</button>
   </footer>
 </div>
 
 <div id="folha" hidden role="dialog" aria-modal="true" aria-label="Pessoas">
-  <div class="cx"><h2><span id="folhaTit">Pessoas</span><button id="fechaFolha" aria-label="Fechar">✕</button></h2><div id="pessoas"></div></div>
+  <div class="cx"><h2><span id="folhaTit">Pessoas</span><button id="fechaFolha" aria-label="Fechar">✕</button></h2><div id="gestaoBox" hidden></div><div id="pessoas"></div></div>
 </div>
 
 <script>
@@ -211,7 +225,7 @@
   if (/^[a-f0-9]{40}$/.test(token)) $('mf').href = API + '/manifest.webmanifest?k=' + token;
   if (!/^[a-f0-9]{40}$/.test(token)) { cartao('Falta o teu link', 'Abre o link pessoal que a régie te enviou. Cada pessoa tem o seu.', true); return; }
 
-  var eu = null, membros = {}, msgs = [], ultimoId = 0, ws = null, tentativas = 0, online = {}, ligado = false, fechado = false;
+  var tokensDeFora = {}, eu = null, membros = {}, msgs = [], ultimoId = 0, ws = null, tentativas = 0, online = {}, ligado = false, fechado = false;
   var lastRx = 0, modoAviso = false, naoLidas = 0, tituloBase = document.title;
   var pendentes = {}, cidN = 0;
 
@@ -276,7 +290,7 @@
       var t = document.createElement('div'); t.className = 'txt'; t.appendChild(conteudo(m.texto)); bal.appendChild(t);
       var h = document.createElement('span'); h.className = 'hora'; h.textContent = m.falhou ? 'não enviada · toca para tentar de novo' : (m.pendente ? 'a enviar…' : hhmm(m.ts)); bal.appendChild(h);
       if (m.falhou) bal.addEventListener('click', function () { reenviar(m); });
-      if (eu && eu.papel === 'dono' && m.id && !m.pendente) {
+      if (eu && eu.gere && m.id && !m.pendente) {
         // o botao ⋯ abre os botoes sem depender de acertar fora de um link (tocar num link abre o menu do telemovel)
         var mn = document.createElement('button'); mn.className = 'mn'; mn.type = 'button'; mn.textContent = '⋯'; mn.setAttribute('aria-label', 'Opções da mensagem'); h.appendChild(mn);
         var alternar = function () {
@@ -365,6 +379,7 @@
       else if (d.t === 'del') { msgs = msgs.filter(function (m) { return m.id !== d.id; }); desenhar(); }
       else if (d.t === 'fixa') { msgs.forEach(function (m) { if (m.id === d.id) m.fixa = d.fixa; }); desenhar(); }
       else if (d.t === 'online') { online = {}; (d.online || []).forEach(function (p) { online[p] = 1; }); subtitulo(); }
+      else if (d.t === 'membros') { recarregarSala(); }
       else if (d.t === 'erro') { var p = pendentes[d.cid]; if (p) { p.pendente = false; p.falhou = true; delete pendentes[d.cid]; desenhar(); if (d.erro === 'devagar') estado('Estás a escrever depressa demais. Espera uns segundos.', true), setTimeout(function () { estado(''); }, 4000); } }
       else if (d.t === 'ok') { delete pendentes[d.cid]; }
     };
@@ -420,7 +435,7 @@
   function enviar() {
     var t = $('texto').value.trim();
     if (!t.trim()) return;
-    var aviso = modoAviso && eu && eu.papel === 'dono';
+    var aviso = modoAviso && eu && eu.gere;
     var m = { id: 0, pid: eu.pid, nome: eu.nome, texto: t, ts: Date.now(), aviso: aviso ? 1 : 0, fixa: 0, pendente: true };
     msgs.push(m); $('texto').value = ''; cresce(); desenhar(); paraOFim();
     enviarTexto(t, aviso, m);
@@ -436,23 +451,109 @@
   $('modoAviso').onclick = function () { modoAviso = !modoAviso; this.setAttribute('aria-pressed', String(modoAviso)); $('texto').focus(); };
 
   // ---------------------------------------------------------------- pessoas
-  $('btPessoas').onclick = function () {
+  // so leitura: le tudo mas nao escreve. Aplica-se ao entrar e sempre que o dono muda o tipo de alguem.
+  function bloquear() {
+    var ro = !!(eu && eu.tipo === 'leitura');
+    $('texto').disabled = ro; $('texto').placeholder = ro ? 'Só podes ler este chat' : 'Escreve uma mensagem';
+    $('enviar').hidden = ro;
+    $('modoAviso').hidden = !(eu && eu.gere);
+    if (ro) { modoAviso = false; $('modoAviso').setAttribute('aria-pressed', 'false'); }
+  }
+  function recarregarSala() {
+    return http('/api/sala').then(function (r) {
+      if (r.s === 401) return invalido();
+      if (r.s !== 200 || !r.j) return;
+      eu = r.j.eu; membros = {}; r.j.membros.forEach(function (m) { membros[m.pid] = m; });
+      bloquear(); subtitulo(); desenhar();
+      if (!$('folha').hidden) abrirPessoas();
+    }).catch(function () {});
+  }
+  var ROTULO = { dono: 'régie', gestor: 'gestor', leitura: 'só leitura' };
+  var gxUltimo = null;
+  function copiarTxt(tx, feito) {
+    function viaExec() { var ta = document.createElement('textarea'); ta.value = tx; ta.style.cssText = 'position:fixed;left:-9999px;top:0'; document.body.appendChild(ta); ta.select(); var ok = false; try { ok = document.execCommand('copy'); } catch (e) {} ta.remove(); feito(ok); }
+    try { if (navigator.clipboard && window.isSecureContext) { navigator.clipboard.writeText(tx).then(function () { feito(true); }, viaExec); return; } } catch (e) {}
+    viaExec();
+  }
+  function mensagemConvite(nome, token) { return 'Olá ' + String(nome).split(/\s+/)[0] + '! Foste convidado(a) para o chat do evento «' + (tituloBase.replace(/ · Chat$/, '')) + '»: ' + location.origin + '/chat/#' + token; }
+
+  function caixaGestao() {
+    var box = $('gestaoBox');
+    if (!(eu && eu.gere)) { box.hidden = true; return; }
+    box.hidden = false;
+    var dono = eu.papel === 'dono';
+    if (box.getAttribute('data-pronto') === (dono ? 'd' : 'g')) { if (gxUltimo && $('gxRes') && !$('gxRes').firstChild) mostraConvite(gxUltimo); return; }
+    box.setAttribute('data-pronto', dono ? 'd' : 'g');
+    box.innerHTML = '<h3>Adicionar pessoa de fora</h3><div class="lin"><input id="gxNome" type="text" placeholder="Nome" maxlength="80" autocomplete="off"><select id="gxTipo" class="gx" aria-label="Tipo"><option value="participante">Participante</option><option value="leitura">Só leitura</option>' + (dono ? '<option value="gestor">Gestor</option>' : '') + '</select><button id="gxAdd" type="button">Adicionar</button></div><div id="gxErro"></div><div id="gxRes"></div>';
+    $('gxAdd').onclick = function () {
+      var nome = $('gxNome').value.trim(), tipo = $('gxTipo').value;
+      if (nome.length < 2) { $('gxErro').textContent = 'Escreve o nome.'; return; }
+      $('gxAdd').disabled = true; $('gxErro').textContent = '';
+      http('/api/gestao/adicionar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nome: nome, tipo: tipo }) }).then(function (x) {
+        $('gxAdd').disabled = false;
+        if (x.s !== 200 || !x.j || !x.j.membro) { $('gxErro').textContent = x.j && x.j.error === 'sala cheia' ? 'O chat está cheio.' : (x.j && x.j.error) || 'Não consegui adicionar.'; return; }
+        var m = x.j.membro; tokensDeFora[m.pid] = m.token; gxUltimo = m;
+        recarregarSala().then(function () { mostraConvite(m); });
+      }).catch(function () { $('gxAdd').disabled = false; $('gxErro').textContent = 'Sem ligação.'; });
+    };
+    if (gxUltimo) mostraConvite(gxUltimo);
+  }
+  function mostraConvite(m) {
+    var res = $('gxRes'); if (!res) return;
+    var msg = mensagemConvite(m.nome, m.token || tokensDeFora[m.pid]);
+    res.innerHTML = '<b></b> adicionado(a).<div class="lk"></div><div class="lin gx"></div>';
+    res.querySelector('b').textContent = m.nome; res.querySelector('.lk').textContent = location.origin + '/chat/#' + (m.token || tokensDeFora[m.pid]);
+    var l = res.querySelector('.lin');
+    var b1 = document.createElement('button'); b1.id = 'gxCopia'; b1.type = 'button'; b1.textContent = 'Copiar mensagem'; b1.onclick = function () { copiarTxt(msg, function (ok) { b1.textContent = ok ? 'Copiado ✓' : 'Copiar mensagem'; }); };
+    var a = document.createElement('a'); a.href = 'https://wa.me/?text=' + encodeURIComponent(msg); a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Enviar por WhatsApp';
+    l.appendChild(b1); l.appendChild(a);
+  }
+
+  function abrirPessoas() {
+    caixaGestao();
     var box = $('pessoas'); box.textContent = '';
     Object.keys(membros).sort(function (a, b) { return (online[b] ? 1 : 0) - (online[a] ? 1 : 0) || membros[a].nome.localeCompare(membros[b].nome, 'pt'); }).forEach(function (pid) {
       var m = membros[pid], d = document.createElement('div'); d.className = 'pessoa';
       var av = document.createElement('div'); av.className = 'av'; av.style.background = cor(pid); av.textContent = iniciais(m.nome); d.appendChild(av);
-      var n = document.createElement('div'); n.className = 'n'; n.textContent = m.nome + (pid === 'dono' ? ' (régie)' : '') + (eu && pid === eu.pid ? ' · tu' : '');
-      if (m.grupo) { var s = document.createElement('small'); s.textContent = m.grupo; n.appendChild(s); }
+      var n = document.createElement('div'); n.className = 'n'; n.textContent = m.nome + (eu && pid === eu.pid ? ' · tu' : '');
+      var rot = ROTULO[m.tipo]; if (rot) { var tg = document.createElement('span'); tg.className = 'tg ' + (m.tipo === 'gestor' || m.tipo === 'dono' ? 'g' : 'l'); tg.textContent = rot; n.appendChild(tg); }
+      if (m.externo) { var te = document.createElement('span'); te.className = 'tg'; te.textContent = 'de fora'; n.appendChild(te); }
+      if (m.grupo && !m.externo) { var s = document.createElement('small'); s.textContent = m.grupo; n.appendChild(s); }
       d.appendChild(n);
       var p = document.createElement('div'); p.className = 'pt' + (online[pid] ? ' on' : ''); p.title = online[pid] ? 'online' : 'offline'; d.appendChild(p);
+      // gestao: o dono muda o tipo e retira qualquer pessoa; um gestor so retira pessoas de fora
+      if (eu && eu.gere && pid !== 'dono' && pid !== eu.pid) {
+        var gx = document.createElement('div'); gx.className = 'gx';
+        if (eu.papel === 'dono') {
+          var sel = document.createElement('select'); sel.setAttribute('aria-label', 'Tipo de ' + m.nome);
+          [['participante', 'Participante'], ['leitura', 'Só leitura'], ['gestor', 'Gestor']].forEach(function (o) { var op = document.createElement('option'); op.value = o[0]; op.textContent = o[1]; if ((m.tipo || 'participante') === o[0]) op.selected = true; sel.appendChild(op); });
+          sel.onchange = function () { http('/api/gestao/tipo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pid: pid, tipo: sel.value }) }).then(function () { recarregarSala(); }); };
+          gx.appendChild(sel);
+        }
+        if (m.externo) {
+          var tk = tokensDeFora[pid];
+          if (tk) { var cp = document.createElement('button'); cp.type = 'button'; cp.textContent = 'Copiar link'; cp.onclick = function () { copiarTxt(mensagemConvite(m.nome, tk), function (ok) { cp.textContent = ok ? 'Copiado ✓' : 'Copiar link'; }); }; gx.appendChild(cp); }
+        }
+        if (eu.papel === 'dono' || m.externo) {
+          var rm = document.createElement('button'); rm.type = 'button'; rm.className = 'x'; rm.textContent = 'Retirar'; rm.setAttribute('aria-label', 'Retirar ' + m.nome);
+          rm.onclick = function () { if (!confirm('Retirar ' + m.nome + ' do chat? O link dela deixa de funcionar.')) return; http('/api/gestao/remover', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pid: pid }) }).then(function () { recarregarSala(); }); };
+          gx.appendChild(rm);
+        }
+        d.appendChild(gx);
+      }
       box.appendChild(d);
     });
     $('folhaTit').textContent = Object.keys(membros).length + ' pessoas · ' + Object.keys(online).length + ' online';
     $('folha').hidden = false;
+  }
+  $('btPessoas').onclick = function () {
+    abrirPessoas();
+    if (eu && eu.gere) http('/api/gestao/membros').then(function (x) { if (x.s === 200 && x.j) { x.j.membros.forEach(function (m) { if (m.token) tokensDeFora[m.pid] = m.token; }); abrirPessoas(); } });
   };
-  $('fechaFolha').onclick = function () { $('folha').hidden = true; };
-  $('folha').addEventListener('click', function (e) { if (e.target === $('folha')) $('folha').hidden = true; });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') $('folha').hidden = true; });
+  function fecharFolha() { $('folha').hidden = true; $('gestaoBox').removeAttribute('data-pronto'); gxUltimo = null; }
+  $('fechaFolha').onclick = fecharFolha;
+  $('folha').addEventListener('click', function (e) { if (e.target === $('folha')) fecharFolha(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') fecharFolha(); });
 
   // ---------------------------------------------------------------- PWA: instalar e notificacoes
   var IOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -502,7 +603,7 @@
     document.title = (tituloBase = s.evento + ' · Chat');
     $('evento').textContent = s.evento;
     $('cartao').hidden = true; $('app').hidden = false;
-    $('modoAviso').hidden = eu.papel !== 'dono';
+    bloquear();
     servidorPush = !!s.push;
     juntar(s.msgs || []);
     online = {}; (s.online || []).forEach(function (p) { online[p] = 1; });

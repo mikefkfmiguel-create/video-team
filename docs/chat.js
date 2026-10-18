@@ -384,6 +384,14 @@
       return h;
     }
 
+    function caixaExternos() {
+      return '<div class="caixa"><h4>Pessoas de fora da escala</h4><div class="nota">Clientes, fornecedores… O link dela envia-se como o das outras. Os <b>gestores</b> também podem acrescentar pessoas de fora, a partir do próprio chat; <b>só leitura</b> lê mas não escreve.</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap"><input type="text" id="vtch-extnome" placeholder="Nome" maxlength="80" autocomplete="off" style="flex:1;min-width:140px">' +
+        '<select id="vtch-exttipo" aria-label="Tipo"><option value="participante">Participante</option><option value="leitura">Só leitura</option><option value="gestor">Gestor</option></select>' +
+        '<input type="tel" id="vtch-exttel" placeholder="Telemóvel (opcional)" inputmode="tel" autocomplete="off" style="flex:1;min-width:140px"></div>' +
+        '<div style="margin-top:8px"><button class="b pri" data-acao="extAdd">Adicionar</button></div></div>';
+    }
+
     function porEnviar() {
       return S.doc.membros.filter(function (m) { return eu({ id: m.id, name: m.name }).t && !S.enviados[enviadoKey(m.id, 'wa')]; });
     }
@@ -394,9 +402,10 @@
         '<div class="nota">{nome} {evento} e {link} são trocados por pessoa. <button class="b" data-acao="msgPadrao" style="height:26px">Repor</button></div></div>';
       var semTel = d.membros.filter(function (m) { return !eu({ id: m.id, name: m.name }).t; }).length;
       if (semTel) h = caixaContactos() + h;
-      h += '<div class="caixa"><h4>Tu (régie)</h4><div class="linha">' + avatar(d.dono.nome, 'dono') + '<div class="nm">' + esc(d.dono.nome) + '<small>escreves avisos fixos para todos</small></div><div class="ac">' +
+      h += '<div class="caixa"><h4>Tu (régie)</h4><div class="linha">' + avatar(d.dono.nome, 'dono') + '<div class="nm">' + esc(d.dono.nome) + '<small>fixas mensagens no topo para todos</small></div><div class="ac">' +
         '<a class="b pri" href="' + esc(link(d.dono.token)) + '" target="_blank" rel="noopener">Abrir o chat</a><button class="b" data-acao="copiar" data-t="' + esc(link(d.dono.token)) + '" data-k="dono">' + (S.copiado === 'dono' ? 'Copiado ✓' : 'Copiar link') + '</button></div></div></div>';
       h += caixaConvite();
+      h += caixaExternos();
       h += '<div class="caixa"><h4>Pessoas (' + d.membros.length + ')</h4>';
       var gruposG = {}; d.membros.forEach(function (m) { gruposG[m.grupo || ''] = 1; });
       var variasG = Object.keys(gruposG).length > 1;
@@ -409,11 +418,13 @@
         }
         if (c.e) acoes += '<a class="b" data-acao="enviado" data-id="' + esc(m.id) + '" data-canal="mail" href="mailto:' + esc(c.e) + '?subject=' + encodeURIComponent('Chat do evento ' + (ctx.titulo || '')) + '&body=' + encodeURIComponent(msg) + '">Email' + marca('mail') + '</a>';
         acoes += '<button class="b" data-acao="copiar" data-t="' + esc(msg) + '" data-k="' + esc(m.id) + '">' + (S.copiado === m.id ? 'Copiado ✓' : 'Copiar') + '</button>';
+        acoes += '<select data-acao="tipoSel" data-id="' + esc(m.id) + '" aria-label="Tipo de ' + esc(m.name) + '"><option value="participante"' + (m.tipo === 'participante' || !m.tipo ? ' selected' : '') + '>Participante</option><option value="leitura"' + (m.tipo === 'leitura' ? ' selected' : '') + '>Só leitura</option><option value="gestor"' + (m.tipo === 'gestor' ? ' selected' : '') + '>Gestor</option></select>';
         if (m.entrou) acoes += '<button class="b" data-acao="liberta" data-id="' + esc(m.id) + '" title="Se alguém escolheu este nome por engano: o aparelho dele perde o acesso e o lugar fica livre">' + (S.conf === 'lib:' + m.id ? 'Libertar? Toca outra vez' : 'Libertar lugar') + '</button>';
         acoes += '<button class="b perigo" data-acao="remover" data-id="' + esc(m.id) + '" title="Retirar do chat (o link dela deixa de funcionar)">' + (S.conf === 'rem:' + m.id ? 'Retirar? Toca outra vez' : '✕') + '</button>';
         var enviado = S.enviados[enviadoKey(m.id, 'wa')] || S.enviados[enviadoKey(m.id, 'sms')] || S.enviados[enviadoKey(m.id, 'mail')];
         h += '<div class="linha">' + avatar(m.name, m.id) + '<div class="nm">' + esc(m.name) + (variasG ? '<small>' + esc(m.grupo || '') + '</small>' : '') +
-          '<div style="margin-top:3px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">' + chipContacto(p, c) + (enviado ? '<span class="tag ok">enviado</span>' : '') + (m.entrou ? '<span class="tag ok">entrou</span>' : '') + '</div></div>' +
+          '<div style="margin-top:3px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">' + chipContacto(p, c) + (enviado ? '<span class="tag ok">enviado</span>' : '') + (m.entrou ? '<span class="tag ok">entrou</span>' : '') + (m.externo ? '<span class="tag">de fora</span>' : '') +
+          (m.tipo === 'gestor' ? '<span class="tag aviso">gestor</span>' : m.tipo === 'leitura' ? '<span class="tag">só leitura</span>' : '') + '</div></div>' +
           '<div style="display:flex;gap:6px;flex:none">' + botaoContacto(p) + '</div><div class="ac">' + acoes + '</div></div>' + (S.edita === m.id ? linhaEditar(p) : '') + (S.busca && S.busca.id === m.id ? linhaBusca(p) : '');
       });
       h += '</div>';
@@ -522,7 +533,8 @@
     el.addEventListener('change', function (ev) {
       var t = ev.target, a = t.getAttribute && t.getAttribute('data-acao');
       if (t.id === 'vtch-fich' && t.files && t.files[0]) { importar(t.files[0]); return; }
-      if (a === 'sel') { S.sel[t.getAttribute('data-id')] = t.checked; lerCaixas(); desenhar(); }
+      if (a === 'tipoSel') { tratar(H('/tipo', { key: ctx.sig, id: t.getAttribute('data-id'), tipo: t.value }), function (j) { S.doc = j; }); }
+      else if (a === 'sel') { S.sel[t.getAttribute('data-id')] = t.checked; lerCaixas(); desenhar(); }
       else if (a === 'cand' && t.value !== '') {
         var id = t.getAttribute('data-id'), p = crew.filter(function (c) { return c.id === id; })[0] || (S.doc && S.doc.membros.filter(function (m) { return m.id === id; })[0]);
         var c = candidatos(p.name, S.lista);
@@ -557,6 +569,19 @@
           else S.aut.erro = (x.j && x.j.error) || 'Esse código não bate certo.';
           desenhar();
         }).catch(function () { S.aut.erro = 'Sem ligação ao servidor.'; desenhar(); });
+        return;
+      }
+      if (a === 'extAdd') {
+        var nomeX = ((document.getElementById('vtch-extnome') || {}).value || '').trim(), tipoX = (document.getElementById('vtch-exttipo') || {}).value || 'participante';
+        var telX = fone((document.getElementById('vtch-exttel') || {}).value), telBruto = ((document.getElementById('vtch-exttel') || {}).value || '').trim();
+        if (nomeX.length < 2) { S.erro = 'Escreve o nome da pessoa.'; desenhar(); return; }
+        if (telBruto && !telX) { S.erro = 'Esse telemóvel não parece válido.'; desenhar(); return; }
+        var antesIds = {}; S.doc.membros.forEach(function (m) { antesIds[m.id] = 1; });
+        tratar(H('/adicionar', { key: ctx.sig, nome: nomeX, tipo: tipoX }), function (j) {
+          S.doc = j;
+          var novo = j.membros.filter(function (m) { return !antesIds[m.id]; })[0];
+          if (novo && telX) { S.manual[novo.id] = { t: telX, e: '' }; lsSet(LS_M, S.manual); }   // o numero fica so neste aparelho
+        });
         return;
       }
       if (a === 'prolonga') { tratar(H('/prolongar', { key: ctx.sig, dias: 1 }), function (j) { S.doc = j; }); return; }

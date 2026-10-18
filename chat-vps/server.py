@@ -38,6 +38,7 @@ TTL_MAX = 120 * DIA
 MAX_MEMBROS = 150
 RITMO_N, RITMO_S = 15, 30     # 15 mensagens por 30 s por pessoa
 TOKEN_RE = re.compile(r'^[a-f0-9]{40}$')
+TIPOS = ('participante', 'leitura', 'gestor')   # participante le e escreve; leitura so le; gestor tambem trata dos participantes de fora e das mensagens
 log = logging.getLogger('vtchat')
 # o Web Push (py_vapid, modo estrito) so aceita «mailto:». E um contacto tecnico para os servicos de push (Google, Apple, Mozilla), nao o teu email pessoal.
 VAPID_SUB_PADRAO = 'mailto:admin@mike-app.com'
@@ -94,7 +95,12 @@ class BD:
         CREATE INDEX IF NOT EXISTS push_token ON push (token);
         CREATE TABLE IF NOT EXISTS convite (sala TEXT PRIMARY KEY REFERENCES sala(id) ON DELETE CASCADE, token TEXT NOT NULL UNIQUE, ativo INTEGER NOT NULL DEFAULT 1, criado INTEGER NOT NULL);
         """)
-        if 'reclamado' not in [c['name'] for c in self.c.execute('PRAGMA table_info(membro)').fetchall()]:
+        cols = [c['name'] for c in self.c.execute('PRAGMA table_info(membro)').fetchall()]
+        if 'tipo' not in cols:
+            self.c.execute("ALTER TABLE membro ADD COLUMN tipo TEXT NOT NULL DEFAULT 'participante'")
+        if 'externo' not in cols:
+            self.c.execute('ALTER TABLE membro ADD COLUMN externo INTEGER NOT NULL DEFAULT 0')   # 1 = nao vem da escala (acrescentado a mao)
+        if 'reclamado' not in cols:
             self.c.execute('ALTER TABLE membro ADD COLUMN reclamado INTEGER NOT NULL DEFAULT 0')   # o lugar ja foi tomado (pelo link pessoal ou pelo geral)
             # quem ja escreveu no chat (versao anterior, sem link geral) ja tem o lugar
             self.c.execute('UPDATE membro SET reclamado=1 WHERE EXISTS (SELECT 1 FROM msg WHERE msg.sala=membro.sala AND msg.pid=membro.pid)')
@@ -161,12 +167,12 @@ class Chat:
         if not TOKEN_RE.match(token):
             return None
         agora = agora_ms()
-        m = self.bd.um('SELECT m.sala, m.pid, m.nome, s.expira, s.evento FROM membro m JOIN sala s ON s.id = m.sala WHERE m.token = ?', token)
+        m = self.bd.um('SELECT m.sala, m.pid, m.nome, m.tipo, m.externo, s.expira, s.evento FROM membro m JOIN sala s ON s.id = m.sala WHERE m.token = ?', token)
         if m and m['expira'] > agora:
-            return {'sala': m['sala'], 'pid': m['pid'], 'nome': m['nome'], 'papel': 'membro', 'token': token}
+            return {'sala': m['sala'], 'pid': m['pid'], 'nome': m['nome'], 'papel': 'membro', 'tipo': m['tipo'], 'externo': bool(m['externo']), 'token': token}
         d = self.bd.um('SELECT id, dono_nome, expira FROM sala WHERE dono_token = ?', token)
         if d and d['expira'] > agora:
-            return {'sala': d['id'], 'pid': 'dono', 'nome': d['dono_nome'], 'papel': 'dono', 'token': token}
+            return {'sala': d['id'], 'pid': 'dono', 'nome': d['dono_nome'], 'papel': 'dono', 'tipo': 'dono', 'externo': False, 'token': token}
         return None
 
     async def exige(self, req):
@@ -180,6 +186,10 @@ class Chat:
         dado = req.headers.get('X-Chat-Admin', '')
         if not self.segredo or not hmac.compare_digest(dado.encode(), self.segredo.encode()):
             raise web.HTTPUnauthorized(text=json.dumps({'error': 'admin'}), content_type='application/json')
+
+    @staticmethod
+    def gere(q):
+        return q['papel'] == 'dono' or q.get('tipo') == 'gestor'
 
     # ---- mensagens
     def listar(self, sala, depois):
@@ -207,6 +217,8 @@ class Chat:
         texto = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', str(texto if texto is not None else '').replace('\r\n', '\n').replace('\r', '\n')).strip()[:MAX_TEXTO]
         if not texto:
             return None, 'vazia', 400
+        if q.get('tipo') == 'leitura':
+            return None, 'leitura', 403                       # «so leitura»: le tudo, nao escreve
         agora = agora_ms()
         chave = (q['sala'], q['pid'])
         lista = [t for t in self.recentes.get(chave, []) if agora - t < RITMO_S * 1000]
@@ -214,7 +226,7 @@ class Chat:
             return None, 'devagar', 429
         lista.append(agora)
         self.recentes[chave] = lista
-        e_aviso = 1 if (aviso and q['papel'] == 'dono') else 0
+        e_aviso = 1 if (aviso and self.gere(q)) else 0
         cur = self.bd.x('INSERT INTO msg (sala,pid,nome,texto,ts,aviso,fixa) VALUES (?,?,?,?,?,?,?)', q['sala'], q['pid'], q['nome'], texto, agora, e_aviso, e_aviso)
         mid = cur.lastrowid
         total = self.bd.um('SELECT COUNT(*) AS n FROM msg WHERE sala=?', q['sala'])['n']
@@ -280,7 +292,7 @@ def vista_dono(bd, sala):
     return {
         'existe': True, 'sala': s['id'], 'evento': s['evento'], 'expira': s['expira'],
         'dono': {'nome': s['dono_nome'], 'token': s['dono_token']},
-        'membros': [{'id': r['pid'], 'name': r['nome'], 'grupo': r['grupo'], 'token': r['token'], 'entrou': bool(r['reclamado'])} for r in bd.q('SELECT * FROM membro WHERE sala=? ORDER BY nome', sala)],
+        'membros': [{'id': r['pid'], 'name': r['nome'], 'grupo': r['grupo'], 'token': r['token'], 'entrou': bool(r['reclamado']), 'tipo': r['tipo'], 'externo': bool(r['externo'])} for r in bd.q('SELECT * FROM membro WHERE sala=? ORDER BY externo, nome', sala)],
         'convite': ({'token': cv['token'], 'ativo': bool(cv['ativo'])} if cv else None),
     }
 
@@ -394,6 +406,37 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
         v['novo'] = novo
         return json_resp(v)
 
+    @r.post(P + '/api/admin/adicionar')
+    async def admin_adicionar(req):
+        chat.exige_admin(req)
+        b = await ler_json(req)
+        sala = id_da_sala(limpa(b.get('key'), 300))
+        if not chat.bd.um('SELECT 1 FROM sala WHERE id=?', sala):
+            return json_resp({'error': 'nao encontrado'}, 404)
+        nome = re.sub(r'\s+', ' ', limpa(b.get('nome'), 80))
+        tipo = limpa(b.get('tipo'), 20) or 'participante'
+        if len(nome) < 2 or tipo not in TIPOS:
+            return json_resp({'error': 'nome ou tipo invalido'}, 400)
+        m = criar_externo(sala, nome, tipo)
+        if not m:
+            return json_resp({'error': 'sala cheia'}, 409)
+        await chat.difundir(sala, {'t': 'membros'})
+        return json_resp(vista_dono(chat.bd, sala))
+
+    @r.post(P + '/api/admin/tipo')
+    async def admin_tipo(req):
+        chat.exige_admin(req)
+        b = await ler_json(req)
+        sala = id_da_sala(limpa(b.get('key'), 300))
+        tipo = limpa(b.get('tipo'), 20)
+        if tipo not in TIPOS:
+            return json_resp({'error': 'tipo invalido'}, 400)
+        cur = chat.bd.x('UPDATE membro SET tipo=? WHERE sala=? AND pid=?', tipo, sala, limpa(b.get('id'), 24))
+        if cur.rowcount != 1:
+            return json_resp({'error': 'nao encontrado'}, 404)
+        await chat.difundir(sala, {'t': 'membros'})
+        return json_resp(vista_dono(chat.bd, sala))
+
     @r.post(P + '/api/admin/remover')
     async def admin_remover(req):
         chat.exige_admin(req)
@@ -408,6 +451,7 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
         for (w, p, _n, _pp) in list(chat.ws.get(sala, set())):
             if p == pid:
                 await w.close(code=4001, message=b'removido')
+        await chat.difundir(sala, {'t': 'membros'})
         return json_resp(vista_dono(chat.bd, sala))
 
     @r.post(P + '/api/admin/convite')
@@ -495,7 +539,7 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
         if not cv or not cv['ativo'] or cv['expira'] <= agora_ms():
             await asyncio.sleep(0.8)
             return json_resp({'error': 'convite'}, 404)
-        ms = chat.bd.q('SELECT pid, nome, grupo, reclamado FROM membro WHERE sala=? ORDER BY nome', cv['sala'])
+        ms = chat.bd.q('SELECT pid, nome, grupo, reclamado FROM membro WHERE sala=? AND externo=0 ORDER BY nome', cv['sala'])
         return json_resp({'evento': cv['evento'], 'membros': [{'pid': m['pid'], 'nome': m['nome'], 'grupo': m['grupo'], 'livre': not m['reclamado']} for m in ms]})
 
     @r.post(P + '/api/convite/entrar')
@@ -509,9 +553,9 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
             return json_resp({'error': 'convite'}, 404)
         pid = limpa(b.get('pid'), 24)
         # a tomada do lugar e atomica: so quem passar de 0 para 1 fica com o link
-        cur = chat.bd.x('UPDATE membro SET reclamado=1 WHERE sala=? AND pid=? AND reclamado=0', cv['sala'], pid)
+        cur = chat.bd.x('UPDATE membro SET reclamado=1 WHERE sala=? AND pid=? AND reclamado=0 AND externo=0', cv['sala'], pid)
         if cur.rowcount != 1:
-            existe = chat.bd.um('SELECT 1 FROM membro WHERE sala=? AND pid=?', cv['sala'], pid)
+            existe = chat.bd.um('SELECT 1 FROM membro WHERE sala=? AND pid=? AND externo=0', cv['sala'], pid)
             return json_resp({'error': 'ocupado' if existe else 'nome'}, 409 if existe else 404)
         m = chat.bd.um('SELECT token FROM membro WHERE sala=? AND pid=?', cv['sala'], pid)
         return json_resp({'token': m['token']})
@@ -523,8 +567,8 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
         if q['papel'] == 'membro':
             chat.bd.x('UPDATE membro SET reclamado=1 WHERE sala=? AND pid=? AND reclamado=0', q['sala'], q['pid'])
         s = chat.bd.um('SELECT * FROM sala WHERE id=?', q['sala'])
-        membros = [{'pid': 'dono', 'nome': s['dono_nome']}] + [{'pid': m['pid'], 'nome': m['nome'], 'grupo': m['grupo']} for m in chat.bd.q('SELECT pid,nome,grupo FROM membro WHERE sala=? ORDER BY nome', q['sala'])]
-        return json_resp({'evento': s['evento'], 'expira': s['expira'], 'eu': {'pid': q['pid'], 'nome': q['nome'], 'papel': q['papel']}, 'membros': membros,
+        membros = [{'pid': 'dono', 'nome': s['dono_nome'], 'tipo': 'dono'}] + [{'pid': m['pid'], 'nome': m['nome'], 'grupo': m['grupo'], 'tipo': m['tipo'], 'externo': bool(m['externo'])} for m in chat.bd.q('SELECT pid,nome,grupo,tipo,externo FROM membro WHERE sala=? ORDER BY externo, nome', q['sala'])]
+        return json_resp({'evento': s['evento'], 'expira': s['expira'], 'eu': {'pid': q['pid'], 'nome': q['nome'], 'papel': q['papel'], 'tipo': q['tipo'], 'gere': chat.gere(q)}, 'membros': membros,
                           'online': chat.presentes(q['sala']), 'push': bool(chat.vapid), **chat.listar(q['sala'], 0)})
 
     @r.get(P + '/api/msgs')
@@ -546,8 +590,8 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
     @r.post(P + '/api/apagar')
     async def apagar(req):
         q = await chat.exige(req)
-        if q['papel'] != 'dono':
-            return json_resp({'error': 'so a regie'}, 403)
+        if not chat.gere(q):
+            return json_resp({'error': 'so a regie e os gestores'}, 403)
         mid = int((await ler_json(req)).get('id') or 0)
         chat.bd.x('UPDATE msg SET apagada=1, fixa=0 WHERE id=? AND sala=?', mid, q['sala'])
         await chat.difundir(q['sala'], {'t': 'del', 'id': mid})
@@ -556,12 +600,87 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
     @r.post(P + '/api/fixar')
     async def fixar(req):
         q = await chat.exige(req)
-        if q['papel'] != 'dono':
-            return json_resp({'error': 'so a regie'}, 403)
+        if not chat.gere(q):
+            return json_resp({'error': 'so a regie e os gestores'}, 403)
         b = await ler_json(req)
         mid, fx = int(b.get('id') or 0), 1 if b.get('fixa') else 0
         chat.bd.x('UPDATE msg SET fixa=? WHERE id=? AND sala=? AND apagada=0', fx, mid, q['sala'])
         await chat.difundir(q['sala'], {'t': 'fixa', 'id': mid, 'fixa': fx})
+        return json_resp({'ok': True})
+
+    # ---------------------------------------------------------- gestao dos participantes (dono e gestores, no proprio chat)
+    def membro_json(m, com_token):
+        d = {'pid': m['pid'], 'nome': m['nome'], 'grupo': m['grupo'], 'tipo': m['tipo'], 'externo': bool(m['externo']), 'entrou': bool(m['reclamado'])}
+        if com_token:
+            d['token'] = m['token']
+        return d
+
+    async def exige_gestao(req):
+        q = await chat.exige(req)
+        if not chat.gere(q):
+            raise web.HTTPForbidden(text=json.dumps({'error': 'so a regie e os gestores'}), content_type='application/json')
+        return q
+
+    def criar_externo(sala, nome, tipo):
+        if chat.bd.um('SELECT COUNT(*) AS n FROM membro WHERE sala=?', sala)['n'] >= MAX_MEMBROS:
+            return None
+        pid = 'x' + secrets.token_hex(4)
+        chat.bd.x('INSERT INTO membro (sala,pid,nome,grupo,token,tipo,externo,reclamado) VALUES (?,?,?,?,?,?,1,1)', sala, pid, nome, 'De fora', novo_token(), tipo)
+        return chat.bd.um('SELECT * FROM membro WHERE sala=? AND pid=?', sala, pid)
+
+    @r.get(P + '/api/gestao/membros')
+    async def g_membros(req):
+        q = await exige_gestao(req)
+        ms = chat.bd.q('SELECT * FROM membro WHERE sala=? ORDER BY externo DESC, nome', q['sala'])
+        return json_resp({'membros': [membro_json(m, bool(m['externo'])) for m in ms]})       # o link so se mostra das pessoas de fora (para o reenviar)
+
+    @r.post(P + '/api/gestao/adicionar')
+    async def g_adicionar(req):
+        q = await exige_gestao(req)
+        b = await ler_json(req)
+        nome = re.sub(r'\s+', ' ', limpa(b.get('nome'), 80))
+        tipo = limpa(b.get('tipo'), 20) or 'participante'
+        permitidos = TIPOS if q['papel'] == 'dono' else ('participante', 'leitura')      # um gestor nao cria gestores
+        if len(nome) < 2:
+            return json_resp({'error': 'escreve o nome'}, 400)
+        if tipo not in permitidos:
+            return json_resp({'error': 'tipo nao permitido'}, 403)
+        m = criar_externo(q['sala'], nome, tipo)
+        if not m:
+            return json_resp({'error': 'sala cheia'}, 409)
+        await chat.difundir(q['sala'], {'t': 'membros'})
+        return json_resp({'membro': membro_json(m, True)})
+
+    @r.post(P + '/api/gestao/remover')
+    async def g_remover(req):
+        q = await exige_gestao(req)
+        pid = limpa((await ler_json(req)).get('pid'), 24)
+        m = chat.bd.um('SELECT * FROM membro WHERE sala=? AND pid=?', q['sala'], pid)
+        if not m:
+            return json_resp({'error': 'nao encontrado'}, 404)
+        if q['papel'] != 'dono' and (not m['externo'] or pid == q['pid']):
+            return json_resp({'error': 'um gestor so retira pessoas de fora'}, 403)
+        chat.bd.x('DELETE FROM push WHERE token=?', m['token'])
+        chat.bd.x('DELETE FROM membro WHERE sala=? AND pid=?', q['sala'], pid)
+        for (w, p_, _n, _pp) in list(chat.ws.get(q['sala'], set())):
+            if p_ == pid:
+                await w.close(code=4001, message=b'removido')
+        await chat.difundir(q['sala'], {'t': 'membros'})
+        return json_resp({'ok': True})
+
+    @r.post(P + '/api/gestao/tipo')
+    async def g_tipo(req):
+        q = await exige_gestao(req)
+        if q['papel'] != 'dono':
+            return json_resp({'error': 'so o dono muda o tipo'}, 403)
+        b = await ler_json(req)
+        pid, tipo = limpa(b.get('pid'), 24), limpa(b.get('tipo'), 20)
+        if tipo not in TIPOS:
+            return json_resp({'error': 'tipo invalido'}, 400)
+        cur = chat.bd.x('UPDATE membro SET tipo=? WHERE sala=? AND pid=?', tipo, q['sala'], pid)
+        if cur.rowcount != 1:
+            return json_resp({'error': 'nao encontrado'}, 404)
+        await chat.difundir(q['sala'], {'t': 'membros'})
         return json_resp({'ok': True})
 
     # ---------------------------------------------------------- push (PWA)
@@ -618,10 +737,11 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
                     await ws.send_str('{"t":"pong"}')
                 elif d.get('t') == 'msg':
                     # o token pode ter sido retirado entretanto
-                    if not chat.por_token(q['token']):
+                    atual = chat.por_token(q['token'])
+                    if not atual:
                         await ws.close(code=4001, message=b'removido')
                         break
-                    m, erro, _st = await chat.enviar_msg(q, d.get('texto'), bool(d.get('aviso')))
+                    m, erro, _st = await chat.enviar_msg(atual, d.get('texto'), bool(d.get('aviso')))
                     if erro:
                         await ws.send_str(json.dumps({'t': 'erro', 'erro': erro, 'cid': d.get('cid')}))
                     else:

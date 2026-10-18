@@ -92,7 +92,7 @@ async def main():
         ok((await api('GET', '/chat/api/sala', k='a' * 40))[0] == 401, 'link inventado: 401')
         ok((await api('GET', '/chat/api/sala'))[0] == 401, 'sem link: 401')
         s, sala = await api('GET', '/chat/api/sala', k=tok['11'])
-        ok(s == 200 and sala['eu'] == {'pid': '11', 'nome': 'Ana Silva', 'papel': 'membro'} and sala['evento'] == 'Congresso Teste' and sala['msgs'] == [] and sala['push'] is True, 'a Ana entra (sala vazia, push disponivel)')
+        ok(s == 200 and {k: sala['eu'][k] for k in ('pid', 'nome', 'papel', 'tipo')} == {'pid': '11', 'nome': 'Ana Silva', 'papel': 'membro', 'tipo': 'participante'} and sala['evento'] == 'Congresso Teste' and sala['msgs'] == [] and sala['push'] is True, 'a Ana entra (sala vazia, push disponivel)')
         ok(len(sala['membros']) == 5 and tok['12'] not in json.dumps(sala), 've quem esta na sala, nunca os links')
 
         # ---- mensagens por HTTP
@@ -226,17 +226,118 @@ async def main():
         ok((await api('POST', '/chat/api/convite/entrar', corpo={'c': 'c' * 40, 'pid': '1'}))[0] == 429, 'muitas tentativas do mesmo endereco: 429')
         chat.falhas.clear()
 
+        # ---- papeis: dono, gestor, participante e so leitura; pessoas de fora
+        dono_tk = c['dono']['token']
+        chat.recentes.clear()          # o teste de spam (Marta) ja gastou o limite de ritmo dela
+        s_, tp = await api('POST', '/chat/api/gestao/tipo', k=tok['11'], corpo={'pid': '13', 'tipo': 'gestor'})
+        ok(s_ == 403, 'um participante normal nao gere nada (403)')
+        s_, _ = await api('POST', '/chat/api/gestao/adicionar', k=tok['11'], corpo={'nome': 'Intruso'})
+        ok(s_ == 403 and (await api('GET', '/chat/api/gestao/membros', k=tok['11']))[0] == 403, '...nem acrescenta pessoas de fora nem ve a gestao')
+        s_, g1 = await api('POST', '/chat/api/gestao/tipo', k=dono_tk, corpo={'pid': '13', 'tipo': 'gestor'})
+        ok(s_ == 200, 'o dono faz da Marta gestora')
+        s_, sala13 = await api('GET', '/chat/api/sala', k=tok['13'])
+        ok(sala13['eu']['tipo'] == 'gestor' and sala13['eu']['gere'] is True, 'a Marta passa a ver que e gestora')
+        ok({m['pid']: m['tipo'] for m in sala13['membros']}['13'] == 'gestor' and {m['pid']: m['tipo'] for m in sala13['membros']}['dono'] == 'dono', 'todos veem o tipo de cada pessoa')
+        ok((await api('POST', '/chat/api/gestao/tipo', k=dono_tk, corpo={'pid': '13', 'tipo': 'chefe'}))[0] == 400, 'tipo invalido: 400')
+        ok((await api('POST', '/chat/api/gestao/tipo', k=dono_tk, corpo={'pid': 'zzz', 'tipo': 'leitura'}))[0] == 404, 'pessoa que nao existe: 404')
+        ok((await api('POST', '/chat/api/gestao/tipo', k=tok['13'], corpo={'pid': '12', 'tipo': 'leitura'}))[0] == 403, 'uma gestora NAO muda o tipo de ninguem (so o dono)')
+
+        # a gestora acrescenta uma pessoa de fora
+        s_, ext = await api('POST', '/chat/api/gestao/adicionar', k=tok['13'], corpo={'nome': '  Cliente  Externo ', 'tipo': 'participante'})
+        ok(s_ == 200 and ext['membro']['nome'] == 'Cliente Externo' and ext['membro']['externo'] and len(ext['membro']['token']) == 40 and ext['membro']['pid'].startswith('x'), 'a gestora acrescenta uma pessoa de fora e recebe o link dela')
+        tok_ext = ext['membro']['token']
+        s_, se = await api('GET', '/chat/api/sala', k=tok_ext)
+        ok(s_ == 200 and se['eu']['nome'] == 'Cliente Externo' and se['eu']['gere'] is False, 'a pessoa de fora entra no chat como participante')
+        s_, mx = await api('POST', '/chat/api/enviar', k=tok_ext, corpo={'texto': 'Boa tarde a todos'})
+        ok(s_ == 200 and mx['m']['nome'] == 'Cliente Externo', 'e pode escrever')
+        ok((await api('POST', '/chat/api/gestao/adicionar', k=tok['13'], corpo={'nome': 'Outro Gestor', 'tipo': 'gestor'}))[0] == 403, 'uma gestora NAO cria outros gestores')
+        ok((await api('POST', '/chat/api/gestao/adicionar', k=tok['13'], corpo={'nome': 'A'}))[0] == 400, 'nome demasiado curto: 400')
+        s_, ro = await api('POST', '/chat/api/gestao/adicionar', k=tok['13'], corpo={'nome': 'Observador', 'tipo': 'leitura'})
+        tok_ro = ro['membro']['token']
+        ok(s_ == 200 and ro['membro']['tipo'] == 'leitura', 'a gestora pode acrescentar alguem so de leitura')
+        s_, lm = await api('GET', '/chat/api/gestao/membros', k=tok['13'])
+        so_ext = {m['pid']: m for m in lm['membros']}
+        ok(all('token' in m for m in lm['membros'] if m['externo']) and all('token' not in m for m in lm['membros'] if not m['externo']), 'a gestao mostra o link so das pessoas de fora (para o reenviar), nunca o dos outros')
+
+        # so leitura
+        s_, er = await api('POST', '/chat/api/enviar', k=tok_ro, corpo={'texto': 'posso escrever?'})
+        ok(s_ == 403 and er['error'] == 'leitura', 'so leitura: nao pode escrever (403)')
+        s_, er2 = await api('POST', '/chat/api/enviar', k=tok_ro, corpo={'texto': 'aviso', 'aviso': True})
+        ok(s_ == 403, '...nem fazer avisos')
+        ok((await api('GET', '/chat/api/msgs', k=tok_ro))[0] == 200 and (await api('GET', '/chat/api/sala', k=tok_ro))[1]['eu']['tipo'] == 'leitura', 'mas le tudo')
+        wro = await http.ws_connect(B + '/chat/api/ws?k=' + tok_ro)
+        await wro.receive()
+        await wro.send_str(json.dumps({'t': 'msg', 'texto': 'pelo websocket', 'cid': 'r1'}))
+        resp_ws = json.loads((await wro.receive()).data)
+        ok(resp_ws.get('t') == 'erro' and resp_ws.get('erro') == 'leitura', 'tambem pelo tempo real: «so leitura» nao escreve')
+        await wro.close()
+        s_, _ = await api('POST', '/chat/api/gestao/tipo', k=dono_tk, corpo={'pid': '12', 'tipo': 'leitura'})
+        ok((await api('POST', '/chat/api/enviar', k=tok['12'], corpo={'texto': 'x'}))[0] == 403, 'o dono passa o Rui a so leitura: deixa de poder escrever logo')
+        s_, _ = await api('POST', '/chat/api/gestao/tipo', k=dono_tk, corpo={'pid': '12', 'tipo': 'participante'})
+        ok((await api('POST', '/chat/api/enviar', k=tok['12'], corpo={'texto': 'voltei'}))[0] == 200, '...e volta a participante: escreve outra vez')
+
+        # a gestora modera (aviso fixo, apagar, fixar)
+        s_, av = await api('POST', '/chat/api/enviar', k=tok['13'], corpo={'texto': 'Aviso da gestora', 'aviso': True})
+        ok(s_ == 200 and av['m']['aviso'] == 1 and av['m']['fixa'] == 1, 'a gestora faz avisos fixos')
+        ok((await api('POST', '/chat/api/apagar', k=tok['13'], corpo={'id': mx['m']['id']}))[0] == 200, 'e apaga mensagens dos outros')
+        ok((await api('POST', '/chat/api/fixar', k=tok['12'], corpo={'id': av['m']['id'], 'fixa': 0}))[0] == 403, 'um participante nao fixa nem apaga')
+
+        # retirar
+        ok((await api('POST', '/chat/api/gestao/remover', k=tok['13'], corpo={'pid': '12'}))[0] == 403, 'a gestora NAO retira gente da escala (so pessoas de fora)')
+        ok((await api('POST', '/chat/api/gestao/remover', k=tok['13'], corpo={'pid': '13'}))[0] == 403, '...nem a si propria')
+        ok((await api('POST', '/chat/api/gestao/remover', k=tok['13'], corpo={'pid': ro['membro']['pid']}))[0] == 200, 'mas retira uma pessoa de fora')
+        ok((await api('GET', '/chat/api/sala', k=tok_ro))[0] == 401, '...e o link dela deixa de funcionar na hora')
+        ok((await api('POST', '/chat/api/gestao/remover', k=dono_tk, corpo={'pid': '14'}))[0] == 200 and (await api('GET', '/chat/api/sala', k=tok['14']))[0] == 401, 'o dono retira qualquer pessoa (tambem da escala)')
+        tok.pop('14', None)
+
+        # o link geral nunca entrega pessoas de fora
+        s_, cvx = await api('POST', '/chat/api/admin/convite', admin=SEGREDO, corpo={'key': KEY})
+        s_, lg = await api('GET', '/chat/api/convite?c=' + cvx['convite']['token'])
+        ok(all(not m['pid'].startswith('x') for m in lg['membros']) and 'Cliente Externo' not in json.dumps(lg), 'o link geral nao mostra as pessoas de fora')
+        s_, rec = await api('POST', '/chat/api/convite/entrar', corpo={'c': cvx['convite']['token'], 'pid': ext['membro']['pid']})
+        ok(s_ == 404, '...nem deixa tomar o lugar de uma delas')
+
+        # o Video Team (dono, pelo Worker) tambem acrescenta e muda tipos
+        s_, ad = await api('POST', '/chat/api/admin/adicionar', admin=SEGREDO, corpo={'key': KEY, 'nome': 'Fornecedor Som', 'tipo': 'gestor'})
+        novo_g = [m for m in ad['membros'] if m['name'] == 'Fornecedor Som'][0]
+        ok(s_ == 200 and novo_g['tipo'] == 'gestor' and novo_g['externo'] and novo_g['token'], 'o dono (Video Team) acrescenta uma pessoa de fora ja como gestora')
+        s_, ti = await api('POST', '/chat/api/admin/tipo', admin=SEGREDO, corpo={'key': KEY, 'id': novo_g['id'], 'tipo': 'leitura'})
+        ok({m['id']: m['tipo'] for m in ti['membros']}[novo_g['id']] == 'leitura', 'e muda-lhe o tipo')
+        ok((await api('POST', '/chat/api/admin/adicionar', corpo={'key': KEY, 'nome': 'X Y'}))[0] == 401, 'sem o segredo: 401')
+
+        # avisa os aparelhos ligados quando a lista muda (para atualizarem o chat)
+        recm = []
+
+        async def ouvir_m(ws):
+            async for msg in ws:
+                if msg.type == aiohttp.WSMsgType.TEXT:
+                    recm.append(json.loads(msg.data))
+        wm = await http.ws_connect(B + '/chat/api/ws?k=' + tok['11'])
+        tm = asyncio.ensure_future(ouvir_m(wm))
+        await asyncio.sleep(0.3)
+        await api('POST', '/chat/api/gestao/adicionar', k=dono_tk, corpo={'nome': 'Mais Um'})
+        ok(await esperar(lambda: any(x['t'] == 'membros' for x in recm)), 'quando alguem entra/sai ou muda de tipo, os aparelhos ligados sao avisados')
+        tm.cancel()
+        await wm.close()
+
         # ---- retirar / fechar
         fechou = []
 
         async def vigia():
-            msg = await wa.receive()
-            fechou.append(msg.data if msg.type == aiohttp.WSMsgType.CLOSE else None)
+            while True:                                  # ignora os avisos «membros» ate chegar o fecho
+                msg = await wa.receive()
+                if msg.type == aiohttp.WSMsgType.CLOSE:
+                    fechou.append(msg.data)
+                    return
+                if msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+                    fechou.append(None)
+                    return
         ta.cancel()
         vg = asyncio.ensure_future(vigia())
         await asyncio.sleep(0.1)
+        antes_n = chat.bd.um('SELECT COUNT(*) AS n FROM membro WHERE sala=?', nova_sala_id := S.id_da_sala(KEY))['n']
         s, rem = await api('POST', '/chat/api/admin/remover', admin=SEGREDO, corpo={'key': KEY, 'id': '11'})
-        ok(s == 200 and len(rem['membros']) == 3, 'a Ana e retirada')
+        ok(s == 200 and len(rem['membros']) == antes_n - 1, 'a Ana e retirada')
         ok((await api('GET', '/chat/api/sala', k=tok['11']))[0] == 401, 'o link dela deixa de funcionar')
         ok(await esperar(lambda: fechou == [4001]), 'e a ligacao em direto dela e cortada (4001)')
         ok(chat.bd.um('SELECT 1 FROM push WHERE token=?', tok['11']) is None, 'e as notificacoes dela apagadas')

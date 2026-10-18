@@ -293,6 +293,26 @@ try:
         depois = chamar("/api/admin/chat?key=" + urllib.parse.quote(SIG), pin="dono-teste")[1]
         ok(len(depois["membros"]) == 4 and [m for m in depois["membros"] if m["id"] == "1"][0]["token"] == tok_ana, "a Marta entra e o link da Ana (ja enviado) nao muda")
 
+        # ---- pessoas de fora e tipos (o dono, no Video Team)
+        ok("pessoas de fora da escala" in pag.inner_text("#vtch").lower() and pag.locator("#vtch-exttipo option").count() == 3, "caixa «Pessoas de fora da escala» com os tres tipos")
+        pag.fill("#vtch-extnome", "Cliente Externo")
+        pag.select_option("#vtch-exttipo", "leitura")
+        pag.fill("#vtch-exttel", "96 111 22 33")
+        pag.click("[data-acao=extAdd]")
+        pag.wait_for_function("document.getElementById('vtch').innerText.includes('Cliente Externo')", timeout=8000)
+        lin_ext = pag.locator("#vtch .linha", has_text="Cliente Externo")
+        ok("de fora" in lin_ext.inner_text() and "só leitura" in lin_ext.inner_text() and "+351 961 112 233" in lin_ext.inner_text(), "a pessoa de fora aparece com «de fora», «so leitura» e o telemovel que escrevi (so neste aparelho)")
+        ok(lin_ext.locator("a.wa").get_attribute("href").startswith("https://wa.me/351961112233?text="), "e tem o botao WhatsApp com o link dela")
+        m_ext = [m for m in chamar("/api/admin/chat?key=" + urllib.parse.quote(SIG), pin="dono-teste")[1]["membros"] if m["name"] == "Cliente Externo"][0]
+        ok(m_ext["externo"] and m_ext["tipo"] == "leitura" and "961112233" not in json.dumps(chamar("/api/admin/chat?key=" + urllib.parse.quote(SIG), pin="dono-teste")[1]), "no servidor: externa, so leitura, e sem o telemovel")
+        lin_ext.locator("select[data-acao=tipoSel]").select_option("gestor")
+        pag.wait_for_function("document.querySelector('#vtch').innerText.includes('gestor')", timeout=8000)
+        s_x, sx = chamar("/chat/api/sala", k=m_ext["token"])
+        ok(s_x == 200 and sx["eu"]["tipo"] == "gestor" and sx["eu"]["gere"], "o dono muda-lhe o tipo para gestor e passa a valer logo")
+        pag.fill("#vtch-extnome", "A")
+        pag.click("[data-acao=extAdd]")
+        ok("Escreve o nome" in pag.inner_text("#vtch"), "nome demasiado curto: avisa")
+
         # ---- retirar e fechar
         pag.locator("#vtch .linha", has_text="Hugo Dias").locator("[data-acao=remover]").click()
         ok("Toca outra vez" in pag.inner_text("#vtch"), "retirar pede confirmacao no proprio botao (sem janelas do navegador, que a app Android nao tem)")

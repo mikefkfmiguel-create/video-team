@@ -48,8 +48,14 @@ try {
   ok((await dono('/api/admin/chat?key=nada')).j.existe === false, 'evento sem sala');
   const c2 = await dono('/api/admin/chat/criar', { key: KEY, label: 'Congresso Teste', membros: [...membros, { id: '13', name: 'Marta Lopes' }] });
   ok(c2.j.membros.length === 3 && !c2.j.novo && c2.j.membros.find((m) => m.id === '11').token === tok['11'], 'acrescentar pessoas mantem os links');
+  const ad = await dono('/api/admin/chat/adicionar', { key: KEY, nome: 'Cliente Externo', tipo: 'leitura' });
+  const ext = ad.j && ad.j.membros && ad.j.membros.find((m) => m.name === 'Cliente Externo');
+  ok(ad.s === 200 && ext && ext.externo && ext.tipo === 'leitura' && (await membro(ext.token)).j.eu.tipo === 'leitura', 'o dono acrescenta uma pessoa de fora (so leitura) pelo Worker');
+  const ti = await dono('/api/admin/chat/tipo', { key: KEY, id: ext.id, tipo: 'gestor' });
+  ok(ti.s === 200 && (await membro(ext.token)).j.eu.gere === true, 'e muda-lhe o tipo para gestor');
+  ok((await dono('/api/admin/chat/adicionar', { key: KEY, nome: 'X', tipo: 'leitura' }, 'ninguem')).s === 401, 'sem a chave do dono: 401');
   const rem = await dono('/api/admin/chat/remover', { key: KEY, id: '12' });
-  ok(rem.j.membros.length === 2 && (await membro(tok['12'])).s === 401, 'retirar: o link deixa de funcionar');
+  ok(rem.j.membros.length === 3 && (await membro(tok['12'])).s === 401, 'retirar: o link deixa de funcionar');
   ok((await dono('/api/admin/chat/nada', { x: 1 })).s === 404, 'rota desconhecida: 404');
   const fe = await dono('/api/admin/chat/fechar', { key: KEY });
   ok(fe.j.ok && (await membro(tok['11'])).s === 401, 'fechar a sala invalida os links');
