@@ -232,6 +232,16 @@ try:
         pag.wait_for_function("document.querySelector('#vtch').innerText.includes('enviado')", timeout=5000)
         ok("enviado" in pag.locator("#vtch .linha", has_text="Ana Silva").inner_text(), "carregar no WhatsApp marca a Ana como «enviado»")
 
+        # ---- «WhatsApp: proxima pessoa»: percorre a lista sem andar a procurar cada uma
+        antes = pag.locator("#vtch .tag.ok", has_text="enviado").count()
+        ok("por enviar · próxima:" in pag.inner_text(".rodape") and "Hugo Dias" in pag.inner_text(".rodape"), "o rodape diz quantas faltam e quem e a proxima (a Ana ja foi)")
+        pag.click("[data-acao=proxima]")
+        pag.wait_for_function("document.querySelectorAll('#vtch .tag.ok').length > %d" % antes, timeout=5000)
+        ok("A abrir o WhatsApp de" in pag.inner_text(".rodape"), "carregar abre o WhatsApp da proxima pessoa com a mensagem pronta")
+        pag.click("[data-acao=proxima]")
+        time.sleep(0.3)
+        ok("Todas as que têm telemóvel já foram abertas" in pag.inner_text(".rodape") or "por enviar" in pag.inner_text(".rodape") or "A abrir" in pag.inner_text(".rodape"), "e continua pela lista")
+
         # ---- copiar
         pag.locator("#vtch .linha", has_text="Rui Costa").locator("button", has_text="Copiar").click()
         pag.wait_for_function("document.querySelector('#vtch').innerText.includes('Copiado')", timeout=5000)

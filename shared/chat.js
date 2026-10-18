@@ -231,7 +231,7 @@
     crew.forEach(function (c) { (c.days || []).forEach(function (d) { if (d > ultimoDia) ultimoDia = d; }); });
     var temFiltro = crew.some(function (c) { return c.filtrado; }) && crew.some(function (c) { return !c.filtrado; });
     var S = {
-      autAtivo: null, aut: null,
+      autAtivo: null, aut: null, msgEnvio: '',
       todos: !temFiltro, doc: null, vista: 'carregar', sel: {}, erro: '', ocupado: false, edita: null, nome: ls(LS_NOME, 'Mike'), msg: ls(LS_MSG, MSG_PADRAO),
       lista: ls(LS_G, []), manual: ls(LS_M, {}), enviados: ls(LS_ENV, {}), copiado: null, importou: ''
     };
@@ -349,6 +349,10 @@
     }
 
     // ---- 2) gerir: links por pessoa
+    function porEnviar() {
+      return S.doc.membros.filter(function (m) { return eu({ id: m.id, name: m.name }).t && !S.enviados[enviadoKey(m.id, 'wa')]; });
+    }
+
     function gerir() {
       var d = S.doc, h = '';
       h += '<div class="caixa"><h4>Mensagem a enviar</h4><textarea id="vtch-msg" aria-label="Mensagem">' + esc(S.msg) + '</textarea>' +
@@ -371,13 +375,17 @@
         acoes += '<button class="b" data-acao="copiar" data-t="' + esc(msg) + '" data-k="' + esc(m.id) + '">' + (S.copiado === m.id ? 'Copiado ✓' : 'Copiar') + '</button>';
         acoes += '<button class="b perigo" data-acao="remover" data-id="' + esc(m.id) + '" title="Retirar do chat (o link dela deixa de funcionar)">' + (S.conf === 'rem:' + m.id ? 'Retirar? Toca outra vez' : '✕') + '</button>';
         var enviado = S.enviados[enviadoKey(m.id, 'wa')] || S.enviados[enviadoKey(m.id, 'sms')] || S.enviados[enviadoKey(m.id, 'mail')];
-        h += '<div class="linha">' + avatar(m.name, m.id) + '<div class="nm">' + esc(m.name) + (variasG ? '<small>' + esc(m.grupo || '') + '</small>' : '') + '</div>' + chipContacto(p, c) +
-          (enviado ? '<span class="tag ok">enviado</span>' : '') + botaoContacto(p) + '<div class="ac">' + acoes + '</div></div>' + (S.edita === m.id ? linhaEditar(p) : '');
+        h += '<div class="linha">' + avatar(m.name, m.id) + '<div class="nm">' + esc(m.name) + (variasG ? '<small>' + esc(m.grupo || '') + '</small>' : '') +
+          '<div style="margin-top:3px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">' + chipContacto(p, c) + (enviado ? '<span class="tag ok">enviado</span>' : '') + '</div></div>' +
+          '<div style="display:flex;gap:6px;flex:none">' + botaoContacto(p) + '</div><div class="ac">' + acoes + '</div></div>' + (S.edita === m.id ? linhaEditar(p) : '');
       });
       h += '</div>';
       h += caixaSeguranca();
-      h += '<div class="rodape"><span class="nota">Válido até ' + new Date(d.expira).toLocaleDateString('pt-PT', { day: 'numeric', month: 'long' }) + ' · as mensagens apagam-se depois</span><span>' +
-        '<button class="b" data-acao="maisPessoas">Acrescentar pessoas</button> <button class="b perigo" data-acao="fechar">' + (S.conf === 'fechar' ? 'Tens a certeza? Toca outra vez (apaga tudo)' : 'Fechar o chat') + '</button></span></div>';
+      h += '<div class="caixa"><h4>Gerir o chat</h4><div class="nota">Válido até ' + new Date(d.expira).toLocaleDateString('pt-PT', { day: 'numeric', month: 'long' }) + ' · as mensagens apagam-se depois.</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="b" data-acao="maisPessoas">Acrescentar pessoas</button><button class="b perigo" data-acao="fechar">' + (S.conf === 'fechar' ? 'Tens a certeza? Toca outra vez (apaga tudo)' : 'Fechar o chat') + '</button></div></div>';
+      var pe = porEnviar();
+      h += '<div class="rodape"><span class="nota">' + (S.msgEnvio ? esc(S.msgEnvio) : (pe.length ? pe.length + ' por enviar · próxima: ' + esc(pe[0].name) : 'Todas as que têm telemóvel já foram abertas ✓')) + '</span>' +
+        '<button class="b wa" data-acao="proxima"' + (pe.length ? '' : ' disabled') + '>WhatsApp: próxima pessoa</button></div>';
       return h;
     }
 
@@ -503,6 +511,18 @@
           else S.aut.erro = (x.j && x.j.error) || 'Esse código não bate certo.';
           desenhar();
         }).catch(function () { S.aut.erro = 'Sem ligação ao servidor.'; desenhar(); });
+        return;
+      }
+      if (a === 'proxima') {
+        var fila = porEnviar();
+        if (!fila.length) { S.msgEnvio = ''; desenhar(); return; }
+        var m1 = fila[0], c1 = eu({ id: m1.id, name: m1.name });
+        S.enviados[enviadoKey(m1.id, 'wa')] = 1; lsSet(LS_ENV, S.enviados);
+        S.msgEnvio = 'A abrir o WhatsApp de ' + m1.name + '… envia a mensagem e volta aqui para a próxima.';
+        var al = document.createElement('a'); al.href = 'https://wa.me/' + c1.t + '?text=' + encodeURIComponent(texto(m1.name, m1.token)); al.target = '_blank'; al.rel = 'noopener';
+        document.body.appendChild(al); al.click(); al.remove();
+        desenhar();
+        setTimeout(function () { S.msgEnvio = ''; desenhar(); }, 6000);
         return;
       }
       if (a === 'sincNativo') { sincronizarNativo(true); return; }
