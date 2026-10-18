@@ -366,6 +366,24 @@
     }
 
     // ---- 2) gerir: links por pessoa
+    function caixaConvite() {
+      var d = S.doc, cv = d.convite, entraram = d.membros.filter(function (m) { return m.entrou; }).length;
+      var h = '<div class="caixa"><h4>Link geral · para o teu grupo de WhatsApp</h4>';
+      if (!cv) {
+        return h + '<div class="nota">Um só link para colares no teu grupo: cada pessoa abre-o, <b>escolhe o seu nome</b> e entra. Mais rápido do que um link por pessoa. Cada nome só entra uma vez (e podes libertar o lugar se alguém se enganar), mas quem tiver o link pode escolher um nome que não é o seu — por isso usa-o em grupos de confiança.</div>' +
+          '<button class="b pri" data-acao="convCria">Criar o link geral</button></div>';
+      }
+      var url = CHAT_BASE + '#c=' + cv.token;
+      var msg = 'Chat do evento «' + (ctx.titulo || 'evento') + '»: abre este link, toca no teu nome e já estás dentro: ' + url;
+      h += '<div class="nota"><b>' + entraram + ' de ' + d.membros.length + ' já entraram.</b> ' + (cv.ativo ? 'O link está ativo.' : 'O link está desativado: ninguém entra por ele.') + '</div>' +
+        '<div class="nota" style="word-break:break-all;font-family:ui-monospace,Menlo,monospace">' + esc(url) + '</div><div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        (cv.ativo ? '<a class="b wa" href="https://wa.me/?text=' + encodeURIComponent(msg) + '" target="_blank" rel="noopener">Enviar para um grupo no WhatsApp</a>' : '') +
+        '<button class="b" data-acao="copiar" data-t="' + esc(msg) + '" data-k="conv">' + (S.copiado === 'conv' ? 'Copiado ✓' : 'Copiar mensagem') + '</button>' +
+        '<button class="b" data-acao="convAtiva">' + (cv.ativo ? 'Desativar' : 'Ativar') + '</button>' +
+        '<button class="b" data-acao="convNovo">' + (S.conf === 'convNovo' ? 'Tens a certeza? (o antigo deixa de servir)' : 'Novo link') + '</button></div></div>';
+      return h;
+    }
+
     function porEnviar() {
       return S.doc.membros.filter(function (m) { return eu({ id: m.id, name: m.name }).t && !S.enviados[enviadoKey(m.id, 'wa')]; });
     }
@@ -378,6 +396,7 @@
       if (semTel) h = caixaContactos() + h;
       h += '<div class="caixa"><h4>Tu (régie)</h4><div class="linha">' + avatar(d.dono.nome, 'dono') + '<div class="nm">' + esc(d.dono.nome) + '<small>escreves avisos fixos para todos</small></div><div class="ac">' +
         '<a class="b pri" href="' + esc(link(d.dono.token)) + '" target="_blank" rel="noopener">Abrir o chat</a><button class="b" data-acao="copiar" data-t="' + esc(link(d.dono.token)) + '" data-k="dono">' + (S.copiado === 'dono' ? 'Copiado ✓' : 'Copiar link') + '</button></div></div></div>';
+      h += caixaConvite();
       h += '<div class="caixa"><h4>Pessoas (' + d.membros.length + ')</h4>';
       var gruposG = {}; d.membros.forEach(function (m) { gruposG[m.grupo || ''] = 1; });
       var variasG = Object.keys(gruposG).length > 1;
@@ -390,10 +409,11 @@
         }
         if (c.e) acoes += '<a class="b" data-acao="enviado" data-id="' + esc(m.id) + '" data-canal="mail" href="mailto:' + esc(c.e) + '?subject=' + encodeURIComponent('Chat do evento ' + (ctx.titulo || '')) + '&body=' + encodeURIComponent(msg) + '">Email' + marca('mail') + '</a>';
         acoes += '<button class="b" data-acao="copiar" data-t="' + esc(msg) + '" data-k="' + esc(m.id) + '">' + (S.copiado === m.id ? 'Copiado ✓' : 'Copiar') + '</button>';
+        if (m.entrou) acoes += '<button class="b" data-acao="liberta" data-id="' + esc(m.id) + '" title="Se alguém escolheu este nome por engano: o aparelho dele perde o acesso e o lugar fica livre">' + (S.conf === 'lib:' + m.id ? 'Libertar? Toca outra vez' : 'Libertar lugar') + '</button>';
         acoes += '<button class="b perigo" data-acao="remover" data-id="' + esc(m.id) + '" title="Retirar do chat (o link dela deixa de funcionar)">' + (S.conf === 'rem:' + m.id ? 'Retirar? Toca outra vez' : '✕') + '</button>';
         var enviado = S.enviados[enviadoKey(m.id, 'wa')] || S.enviados[enviadoKey(m.id, 'sms')] || S.enviados[enviadoKey(m.id, 'mail')];
         h += '<div class="linha">' + avatar(m.name, m.id) + '<div class="nm">' + esc(m.name) + (variasG ? '<small>' + esc(m.grupo || '') + '</small>' : '') +
-          '<div style="margin-top:3px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">' + chipContacto(p, c) + (enviado ? '<span class="tag ok">enviado</span>' : '') + '</div></div>' +
+          '<div style="margin-top:3px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">' + chipContacto(p, c) + (enviado ? '<span class="tag ok">enviado</span>' : '') + (m.entrou ? '<span class="tag ok">entrou</span>' : '') + '</div></div>' +
           '<div style="display:flex;gap:6px;flex:none">' + botaoContacto(p) + '</div><div class="ac">' + acoes + '</div></div>' + (S.edita === m.id ? linhaEditar(p) : '') + (S.busca && S.busca.id === m.id ? linhaBusca(p) : '');
       });
       h += '</div>';
@@ -536,6 +556,19 @@
           else S.aut.erro = (x.j && x.j.error) || 'Esse código não bate certo.';
           desenhar();
         }).catch(function () { S.aut.erro = 'Sem ligação ao servidor.'; desenhar(); });
+        return;
+      }
+      if (a === 'convCria' || a === 'convAtiva' || a === 'convNovo') {
+        if (a === 'convNovo' && conf !== 'convNovo') { pedeConfirmar('convNovo'); return; }
+        var corpoC = { key: ctx.sig };
+        if (a === 'convNovo') corpoC.renovar = true;
+        if (a === 'convAtiva') corpoC.ativo = !(S.doc.convite && S.doc.convite.ativo);
+        tratar(H('/convite', corpoC), function (j) { S.doc = j; });
+        return;
+      }
+      if (a === 'liberta') {
+        if (conf !== 'lib:' + id) { pedeConfirmar('lib:' + id); return; }
+        tratar(H('/libertar', { key: ctx.sig, id: id }), function (j) { S.doc = j; });
         return;
       }
       if (a === 'proxima') {

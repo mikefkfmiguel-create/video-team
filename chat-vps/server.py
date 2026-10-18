@@ -8,7 +8,7 @@ Serve tambem a propria pagina do chat (static/), instalavel como PWA, em /chat/.
 O servidor NUNCA guarda telefones nem emails: so nomes, ids do 7Eventos e os links (tokens). Os contactos ficam no aparelho do dono.
 A criacao/fecho das salas e feita pelo Worker do Video Team (que tem a chave do dono) com o segredo VTCHAT_SECRET (cabecalho X-Chat-Admin).
 
-Ambiente: VTCHAT_DATA (pasta de dados), VTCHAT_SECRET (segredo do Worker), VTCHAT_HOST/VTCHAT_PORT, VTCHAT_VAPID_SUB (mailto: para o Web Push).
+Ambiente: VTCHAT_DATA (pasta de dados), VTCHAT_SECRET (segredo do Worker), VTCHAT_HOST/VTCHAT_PORT, VTCHAT_VAPID_SUB (mailto: tecnico para o Web Push).
 """
 import asyncio
 import base64
@@ -39,6 +39,8 @@ MAX_MEMBROS = 150
 RITMO_N, RITMO_S = 15, 30     # 15 mensagens por 30 s por pessoa
 TOKEN_RE = re.compile(r'^[a-f0-9]{40}$')
 log = logging.getLogger('vtchat')
+# o Web Push (py_vapid, modo estrito) so aceita «mailto:». E um contacto tecnico para os servicos de push (Google, Apple, Mozilla), nao o teu email pessoal.
+VAPID_SUB_PADRAO = 'mailto:admin@mike-app.com'
 
 
 def agora_ms():
@@ -84,7 +86,12 @@ class BD:
         CREATE INDEX IF NOT EXISTS msg_sala ON msg (sala, id);
         CREATE TABLE IF NOT EXISTS push (endpoint TEXT PRIMARY KEY, token TEXT NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, ts INTEGER NOT NULL);
         CREATE INDEX IF NOT EXISTS push_token ON push (token);
+        CREATE TABLE IF NOT EXISTS convite (sala TEXT PRIMARY KEY REFERENCES sala(id) ON DELETE CASCADE, token TEXT NOT NULL UNIQUE, ativo INTEGER NOT NULL DEFAULT 1, criado INTEGER NOT NULL);
         """)
+        if 'reclamado' not in [c['name'] for c in self.c.execute('PRAGMA table_info(membro)').fetchall()]:
+            self.c.execute('ALTER TABLE membro ADD COLUMN reclamado INTEGER NOT NULL DEFAULT 0')   # o lugar ja foi tomado (pelo link pessoal ou pelo geral)
+            # quem ja escreveu no chat (versao anterior, sem link geral) ja tem o lugar
+            self.c.execute('UPDATE membro SET reclamado=1 WHERE EXISTS (SELECT 1 FROM msg WHERE msg.sala=membro.sala AND msg.pid=membro.pid)')
 
     def q(self, sql, *a):
         return self.c.execute(sql, a).fetchall()
@@ -126,7 +133,7 @@ class Vapid:
 
 # ---------------------------------------------------------------- a aplicacao
 class Chat:
-    def __init__(self, pasta, segredo, vapid_sub='https://things-on.mike-app.com/chat/'):
+    def __init__(self, pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
         os.makedirs(pasta, exist_ok=True)
         self.bd = BD(os.path.join(pasta, 'chat.db'))
         self.segredo = segredo or ''
@@ -264,10 +271,12 @@ def vista_dono(bd, sala):
     s = bd.um('SELECT * FROM sala WHERE id=?', sala)
     if not s:
         return {'existe': False}
+    cv = bd.um('SELECT token, ativo FROM convite WHERE sala=?', sala)
     return {
         'existe': True, 'sala': s['id'], 'evento': s['evento'], 'expira': s['expira'],
         'dono': {'nome': s['dono_nome'], 'token': s['dono_token']},
-        'membros': [{'id': r['pid'], 'name': r['nome'], 'grupo': r['grupo'], 'token': r['token']} for r in bd.q('SELECT * FROM membro WHERE sala=? ORDER BY nome', sala)],
+        'membros': [{'id': r['pid'], 'name': r['nome'], 'grupo': r['grupo'], 'token': r['token'], 'entrou': bool(r['reclamado'])} for r in bd.q('SELECT * FROM membro WHERE sala=? ORDER BY nome', sala)],
+        'convite': ({'token': cv['token'], 'ativo': bool(cv['ativo'])} if cv else None),
     }
 
 
@@ -283,7 +292,7 @@ async def ler_json(req):
         return {}
 
 
-def criar_app(pasta, segredo, vapid_sub='https://things-on.mike-app.com/chat/'):
+def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
     chat = Chat(pasta, segredo, vapid_sub)
     app = web.Application(client_max_size=64 * 1024)
     app['chat'] = chat
@@ -396,6 +405,37 @@ def criar_app(pasta, segredo, vapid_sub='https://things-on.mike-app.com/chat/'):
                 await w.close(code=4001, message=b'removido')
         return json_resp(vista_dono(chat.bd, sala))
 
+    @r.post(P + '/api/admin/convite')
+    async def admin_convite(req):
+        chat.exige_admin(req)
+        b = await ler_json(req)
+        sala = id_da_sala(limpa(b.get('key'), 300))
+        if not chat.bd.um('SELECT 1 FROM sala WHERE id=?', sala):
+            return json_resp({'error': 'nao encontrado'}, 404)
+        ativo = 0 if b.get('ativo') is False else 1
+        atual = chat.bd.um('SELECT token FROM convite WHERE sala=?', sala)
+        if b.get('renovar') or not atual:
+            chat.bd.x('INSERT OR REPLACE INTO convite (sala, token, ativo, criado) VALUES (?,?,?,?)', sala, novo_token(), ativo, agora_ms())   # token novo: o link antigo deixa de servir
+        else:
+            chat.bd.x('UPDATE convite SET ativo=? WHERE sala=?', ativo, sala)
+        return json_resp(vista_dono(chat.bd, sala))
+
+    @r.post(P + '/api/admin/libertar')
+    async def admin_libertar(req):
+        chat.exige_admin(req)
+        b = await ler_json(req)
+        sala = id_da_sala(limpa(b.get('key'), 300))
+        pid = limpa(b.get('id'), 24)
+        if not chat.bd.um('SELECT 1 FROM membro WHERE sala=? AND pid=?', sala, pid):
+            return json_resp({'error': 'nao encontrado'}, 404)
+        old = chat.bd.um('SELECT token FROM membro WHERE sala=? AND pid=?', sala, pid)['token']
+        chat.bd.x('DELETE FROM push WHERE token=?', old)
+        chat.bd.x('UPDATE membro SET reclamado=0, token=? WHERE sala=? AND pid=?', novo_token(), sala, pid)   # o aparelho de antes perde o acesso
+        for (w, p_, _n, _pp) in list(chat.ws.get(sala, set())):
+            if p_ == pid:
+                await w.close(code=4001, message=b'lugar libertado')
+        return json_resp(vista_dono(chat.bd, sala))
+
     @r.post(P + '/api/admin/fechar')
     async def admin_fechar(req):
         chat.exige_admin(req)
@@ -408,10 +448,58 @@ def criar_app(pasta, segredo, vapid_sub='https://things-on.mike-app.com/chat/'):
         chat.ws.pop(sala, None)
         return json_resp({'ok': True})
 
+    # ---------------------------------------------------------- link geral: cada pessoa escolhe o seu nome
+    def convite_de(req, token):
+        if not TOKEN_RE.match(str(token or '')):
+            return None
+        return chat.bd.um('SELECT c.sala, c.ativo, s.evento, s.expira FROM convite c JOIN sala s ON s.id = c.sala WHERE c.token = ?', token)
+
+    def limite_ip(req, n, janela=600):
+        ip = req.headers.get('CF-Connecting-IP') or req.remote or '?'
+        agora = time.time()
+        lista = [t for t in chat.falhas.get(ip, []) if agora - t < janela]
+        if len(lista) >= n:
+            chat.falhas[ip] = lista
+            return False
+        lista.append(agora)
+        chat.falhas[ip] = lista
+        return True
+
+    @r.get(P + '/api/convite')
+    async def convite_get(req):
+        if not limite_ip(req, 60):
+            return json_resp({'error': 'devagar'}, 429)
+        cv = convite_de(req, req.query.get('c'))
+        if not cv or not cv['ativo'] or cv['expira'] <= agora_ms():
+            await asyncio.sleep(0.8)
+            return json_resp({'error': 'convite'}, 404)
+        ms = chat.bd.q('SELECT pid, nome, grupo, reclamado FROM membro WHERE sala=? ORDER BY nome', cv['sala'])
+        return json_resp({'evento': cv['evento'], 'membros': [{'pid': m['pid'], 'nome': m['nome'], 'grupo': m['grupo'], 'livre': not m['reclamado']} for m in ms]})
+
+    @r.post(P + '/api/convite/entrar')
+    async def convite_entrar(req):
+        if not limite_ip(req, 20):
+            return json_resp({'error': 'devagar'}, 429)
+        b = await ler_json(req)
+        cv = convite_de(req, b.get('c'))
+        if not cv or not cv['ativo'] or cv['expira'] <= agora_ms():
+            await asyncio.sleep(0.8)
+            return json_resp({'error': 'convite'}, 404)
+        pid = limpa(b.get('pid'), 24)
+        # a tomada do lugar e atomica: so quem passar de 0 para 1 fica com o link
+        cur = chat.bd.x('UPDATE membro SET reclamado=1 WHERE sala=? AND pid=? AND reclamado=0', cv['sala'], pid)
+        if cur.rowcount != 1:
+            existe = chat.bd.um('SELECT 1 FROM membro WHERE sala=? AND pid=?', cv['sala'], pid)
+            return json_resp({'error': 'ocupado' if existe else 'nome'}, 409 if existe else 404)
+        m = chat.bd.um('SELECT token FROM membro WHERE sala=? AND pid=?', cv['sala'], pid)
+        return json_resp({'token': m['token']})
+
     # ---------------------------------------------------------- membros: o chat
     @r.get(P + '/api/sala')
     async def sala_get(req):
         q = await chat.exige(req)
+        if q['papel'] == 'membro':
+            chat.bd.x('UPDATE membro SET reclamado=1 WHERE sala=? AND pid=? AND reclamado=0', q['sala'], q['pid'])
         s = chat.bd.um('SELECT * FROM sala WHERE id=?', q['sala'])
         membros = [{'pid': 'dono', 'nome': s['dono_nome']}] + [{'pid': m['pid'], 'nome': m['nome'], 'grupo': m['grupo']} for m in chat.bd.q('SELECT pid,nome,grupo FROM membro WHERE sala=? ORDER BY nome', q['sala'])]
         return json_resp({'evento': s['evento'], 'expira': s['expira'], 'eu': {'pid': q['pid'], 'nome': q['nome'], 'papel': q['papel']}, 'membros': membros,
@@ -545,7 +633,7 @@ def main():
     segredo = os.environ.get('VTCHAT_SECRET', '')
     if not segredo:
         log.warning('VTCHAT_SECRET vazio: o Worker nao consegue criar salas')
-    app = criar_app(pasta, segredo, os.environ.get('VTCHAT_VAPID_SUB', 'https://things-on.mike-app.com/chat/'))
+    app = criar_app(pasta, segredo, os.environ.get('VTCHAT_VAPID_SUB', VAPID_SUB_PADRAO))
     web.run_app(app, host=os.environ.get('VTCHAT_HOST', '127.0.0.1'), port=int(os.environ.get('VTCHAT_PORT', '8782')), access_log=None, print=None)
 
 

@@ -9,7 +9,7 @@ WorkingDirectory=/opt/vt-chat
 Environment=VTCHAT_DATA=/var/lib/vt-chat
 Environment=VTCHAT_HOST=127.0.0.1
 Environment=VTCHAT_PORT=8782
-Environment=VTCHAT_VAPID_SUB=https://things-on.mike-app.com/chat/
+Environment=VTCHAT_VAPID_SUB=mailto:admin@mike-app.com
 Environment=PYTHONUNBUFFERED=1
 # VTCHAT_SECRET (o mesmo que o Worker tem em CHAT_SECRET): ficheiro so legivel por root
 EnvironmentFile=/etc/vt-chat.env

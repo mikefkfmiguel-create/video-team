@@ -148,6 +148,15 @@ async def main():
         await asyncio.sleep(0.3)
         ok(not any('/ana' in e for e, _d in envios), 'quem escreve nunca recebe o proprio push')
 
+        # ---- o contacto do Web Push tem de ser aceite pelo py_vapid (modo estrito): senao NENHUMA notificacao sai (aconteceu em producao)
+        try:
+            chat.vapid.v.sign({'sub': chat.vapid.sub, 'aud': 'https://fcm.googleapis.com'})
+            assinou = True
+        except Exception as e:
+            assinou = False
+            print('   erro:', e)
+        ok(assinou and chat.vapid.sub.startswith('mailto:'), 'a assinatura VAPID aceita o contacto configurado (%s)' % chat.vapid.sub)
+
         # ---- regie
         s, f = await api('GET', '/chat/api/sala', k=tok['13'])
         ok(len(f['fixas']) == 1 and '7h' in f['fixas'][0]['texto'], 'aviso fixo visto por quem entra')
@@ -171,6 +180,51 @@ async def main():
             ok(r.status == 200 and r.headers['Content-Type'] == 'image/png', 'icones')
         async with http.get(B + '/chat', allow_redirects=False) as r:
             ok(r.status == 301 and r.headers['Location'] == '/chat/', '/chat vai para /chat/')
+
+        # ---- link geral: cada pessoa escolhe o seu nome
+        s, _ = await api('POST', '/chat/api/admin/convite', corpo={'key': KEY})
+        ok(s == 401, 'criar o link geral sem o segredo: 401')
+        s, cv = await api('POST', '/chat/api/admin/convite', admin=SEGREDO, corpo={'key': KEY})
+        ok(s == 200 and cv['convite']['ativo'] and len(cv['convite']['token']) == 40, 'o dono cria o link geral')
+        tok_c = cv['convite']['token']
+        s, c2_ = await api('POST', '/chat/api/admin/convite', admin=SEGREDO, corpo={'key': KEY})
+        ok(c2_['convite']['token'] == tok_c, 'pedir outra vez devolve o mesmo link (nao muda sozinho)')
+        s, lst = await api('GET', '/chat/api/convite?c=' + tok_c)
+        ok(s == 200 and lst['evento'] == 'Congresso Teste' and len(lst['membros']) == 4, 'o link mostra o evento e os nomes (sem tokens)')
+        ok(tok['12'] not in json.dumps(lst) and all(set(m) == {'pid', 'nome', 'grupo', 'livre'} for m in lst['membros']), 'e nunca os links pessoais nem outros dados')
+        ok((await api('GET', '/chat/api/convite?c=' + 'a' * 40))[0] == 404 and (await api('GET', '/chat/api/convite'))[0] == 404, 'link geral inventado: 404')
+        s, ent = await api('POST', '/chat/api/convite/entrar', corpo={'c': tok_c, 'pid': '12'})
+        ok(s == 200 and ent['token'] == tok['12'], 'o Rui escolhe o nome dele e recebe o link pessoal')
+        s, sala12 = await api('GET', '/chat/api/sala', k=ent['token'])
+        ok(s == 200 and sala12['eu']['nome'] == 'Rui Costa', 'e esse link abre o chat como o Rui')
+        s, outra = await api('POST', '/chat/api/convite/entrar', corpo={'c': tok_c, 'pid': '12'})
+        ok(s == 409 and outra['error'] == 'ocupado', 'outro aparelho nao pode tomar o mesmo nome (409)')
+        s, lst2 = await api('GET', '/chat/api/convite?c=' + tok_c)
+        ok([m['livre'] for m in lst2['membros'] if m['pid'] == '12'] == [False], 'o nome do Rui aparece como «ja entrou»')
+        ok((await api('POST', '/chat/api/convite/entrar', corpo={'c': tok_c, 'pid': 'zzz'}))[0] == 404, 'nome que nao existe: 404')
+        ok((await api('POST', '/chat/api/convite/entrar', corpo={'c': 'b' * 40, 'pid': '13'}))[0] == 404, 'entrar com um link geral falso: 404')
+        # quem entrou pelo link pessoal tambem ocupa o lugar (ninguem o toma pelo link geral)
+        await api('GET', '/chat/api/sala', k=tok['13'])
+        ok((await api('POST', '/chat/api/convite/entrar', corpo={'c': tok_c, 'pid': '13'}))[0] == 409, 'o lugar de quem ja abriu o link pessoal tambem esta ocupado')
+        s, ver_ = await api('GET', '/chat/api/admin/ver?key=' + KEY, admin=SEGREDO)
+        ok({m['id']: m['entrou'] for m in ver_['membros']}['12'] is True and ver_['convite']['ativo'], 'o dono ve quem ja entrou')
+        s, lib = await api('POST', '/chat/api/admin/libertar', admin=SEGREDO, corpo={'key': KEY, 'id': '12'})
+        novo12 = {m['id']: m for m in lib['membros']}['12']
+        ok(not novo12['entrou'] and novo12['token'] != tok['12'], 'libertar o lugar: fica livre e o link pessoal muda')
+        ok((await api('GET', '/chat/api/sala', k=tok['12']))[0] == 401, '...e o aparelho de antes perde o acesso')
+        s, ent2 = await api('POST', '/chat/api/convite/entrar', corpo={'c': tok_c, 'pid': '12'})
+        ok(s == 200 and ent2['token'] == novo12['token'], 'outra pessoa pode escolher o nome libertado')
+        tok['12'] = ent2['token']
+        s, off = await api('POST', '/chat/api/admin/convite', admin=SEGREDO, corpo={'key': KEY, 'ativo': False})
+        ok(not off['convite']['ativo'] and (await api('GET', '/chat/api/convite?c=' + tok_c))[0] == 404, 'desativar o link geral: deixa de funcionar')
+        s, on = await api('POST', '/chat/api/admin/convite', admin=SEGREDO, corpo={'key': KEY, 'ativo': True})
+        ok(on['convite']['ativo'] and on['convite']['token'] == tok_c and (await api('GET', '/chat/api/convite?c=' + tok_c))[0] == 200, 'e volta a ativar com o mesmo link')
+        s, nv = await api('POST', '/chat/api/admin/convite', admin=SEGREDO, corpo={'key': KEY, 'renovar': True})
+        ok(nv['convite']['token'] != tok_c and (await api('GET', '/chat/api/convite?c=' + tok_c))[0] == 404, 'link novo: o antigo deixa de servir')
+        for _ in range(25):
+            await api('POST', '/chat/api/convite/entrar', corpo={'c': 'c' * 40, 'pid': '1'})
+        ok((await api('POST', '/chat/api/convite/entrar', corpo={'c': 'c' * 40, 'pid': '1'}))[0] == 429, 'muitas tentativas do mesmo endereco: 429')
+        chat.falhas.clear()
 
         # ---- retirar / fechar
         fechou = []
