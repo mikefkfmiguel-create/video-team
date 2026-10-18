@@ -340,6 +340,22 @@ async def main():
         s_, nvs = await api('GET', '/chat/api/admin/eventos?depois=%d' % ultimo_id, admin=SEGREDO)
         ok(nvs['eventos'] == [], 'acrescentar pessoas a uma sala que ja existe nao conta como sala criada')
 
+        # ---- «link enviado» guardado no servidor (so a marca por pessoa; igual em todos os aparelhos do dono)
+        ok((await api('POST', '/chat/api/admin/enviado', corpo={'key': KEY, 'id': '13', 'canal': 'wa'}))[0] == 401, 'marcar enviado pede o segredo')
+        s_, ve = await api('POST', '/chat/api/admin/enviado', admin=SEGREDO, corpo={'key': KEY, 'id': '13', 'canal': 'wa'})
+        m13 = [m for m in ve['membros'] if m['id'] == '13'][0]
+        ok(s_ == 200 and m13['enviado'] == ['wa'] and all(m['enviado'] == [] for m in ve['membros'] if m['id'] != '13'), 'marcar enviado (WhatsApp) fica na pessoa certa')
+        s_, ve = await api('POST', '/chat/api/admin/enviado', admin=SEGREDO, corpo={'key': KEY, 'id': '13', 'canal': 'mail'})
+        ok(sorted([m for m in ve['membros'] if m['id'] == '13'][0]['enviado']) == ['mail', 'wa'], 'varios canais acumulam-se')
+        s_, ve = await api('POST', '/chat/api/admin/enviado', admin=SEGREDO, corpo={'key': KEY, 'id': '13', 'canal': 'mail', 'valor': False})
+        ok([m for m in ve['membros'] if m['id'] == '13'][0]['enviado'] == ['wa'], 'desmarcar um canal')
+        ok((await api('POST', '/chat/api/admin/enviado', admin=SEGREDO, corpo={'key': KEY, 'id': '13', 'canal': 'fax'}))[0] == 400, 'canal inventado: 400')
+        ok((await api('POST', '/chat/api/admin/enviado', admin=SEGREDO, corpo={'key': KEY, 'id': '999', 'canal': 'wa'}))[0] == 404, 'pessoa que nao existe: 404')
+        s_, vv = await api('GET', '/chat/api/admin/ver?key=' + KEY, admin=SEGREDO)
+        ok([m for m in vv['membros'] if m['id'] == '13'][0]['enviado'] == ['wa'], 'ao voltar a abrir o painel a marca la esta (sobrevive a reinstalar a app)')
+        ok('912' not in json.dumps(vv), 'e nao ha telefones no servidor')
+        ok(isinstance(vv.get('online'), list) and len(vv['online']) >= 1 and set(vv['online']) <= {m['id'] for m in vv['membros']} | {'dono'}, 'o painel do dono recebe quem esta ligado agora (referencia real do servidor)')
+
         # ---- fotos (ja reduzidas pelo telemovel): ficheiros no disco, limites, permissoes, apagadas com a sala
         def jpeg(n):
             return b'\xff\xd8\xff\xe0' + b'J' * (n - 6) + b'\xff\xd9'

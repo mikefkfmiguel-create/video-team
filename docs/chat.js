@@ -233,7 +233,7 @@
     var S = {
       autAtivo: null, aut: null, msgEnvio: '', busca: null, gerirPessoas: false,
       todos: !temFiltro, doc: null, vista: 'carregar', sel: {}, erro: '', ocupado: false, edita: null, nome: ls(LS_NOME, 'Mike'), msg: ls(LS_MSG, MSG_PADRAO),
-      lista: ls(LS_G, []), manual: ls(LS_M, {}), enviados: ls(LS_ENV, {}), copiado: null, importou: ''
+      lista: ls(LS_G, []), manual: ls(LS_M, {}), enviados: ls(LS_ENV, {}), online: [], ass: '', copiado: null, importou: ''
     };
     crew.forEach(function (c) { S.sel[c.id] = temFiltro ? !!c.filtrado : true; });
     function pessoasVisiveis() { return crew.filter(function (c) { return S.todos || !temFiltro || c.filtrado; }); }
@@ -254,6 +254,13 @@
     function texto(nome, token) { return String(S.msg).replace(/\{nome\}/g, primeiroNome(nome)).replace(/\{evento\}/g, ctx.titulo || 'evento').replace(/\{link\}/g, link(token)); }
     function eu(p) { return contactoDe(p, S.lista, S.manual); }
     function enviadoKey(id, canal) { return (S.doc ? S.doc.sala : '') + '|' + id + '|' + canal; }
+    // «enviado» vem do servidor (so a marca por pessoa, igual em todos os aparelhos e sobrevive a reinstalar) e tambem do que ficou neste aparelho
+    function jaEnviado(m, canal) { return !!(S.enviados[enviadoKey(m.id, canal)] || (m.enviado && m.enviado.indexOf(canal) >= 0)); }
+    function marcarEnviado(id, canal) {
+      S.enviados[enviadoKey(id, canal)] = 1; lsSet(LS_ENV, S.enviados);
+      if (S.doc) S.doc.membros.forEach(function (m) { if (m.id === id) { m.enviado = (m.enviado || []).filter(function (x) { return x !== canal; }).concat(canal); } });
+      H('/enviado', { key: ctx.sig, id: id, canal: canal }).then(function (j) { if (j && j.membros && S.doc && j.sala === S.doc.sala) { S.doc = j; if (j.online) S.online = j.online; desenhar(); } }).catch(function () {});
+    }
 
     function avatar(nome, id) { return '<div class="av" style="background:hsl(' + hue(id) + ' 55% 45%)">' + esc(ini(nome)) + '</div>'; }
 
@@ -393,7 +400,7 @@
     }
 
     function porEnviar() {
-      return S.doc.membros.filter(function (m) { return eu({ id: m.id, name: m.name }).t && !S.enviados[enviadoKey(m.id, 'wa')]; });
+      return S.doc.membros.filter(function (m) { return eu({ id: m.id, name: m.name }).t && !m.entrou && !jaEnviado(m, 'wa'); });      // quem ja entrou no chat nao precisa do link
     }
 
     function gerir() {
@@ -411,7 +418,7 @@
       var variasG = Object.keys(gruposG).length > 1;
       d.membros.forEach(function (m) {
         var p = { id: m.id, name: m.name, grupo: m.grupo }, c = eu(p), msg = texto(m.name, m.token), acoes = '';
-        function marca(canal) { return S.enviados[enviadoKey(m.id, canal)] ? ' ✓' : ''; }
+        function marca(canal) { return jaEnviado(m, canal) ? ' ✓' : ''; }
         if (c.t) {
           acoes += '<a class="b wa" data-acao="enviado" data-id="' + esc(m.id) + '" data-canal="wa" href="https://wa.me/' + c.t + '?text=' + encodeURIComponent(msg) + '" target="_blank" rel="noopener">WhatsApp' + marca('wa') + '</a>';
           acoes += '<a class="b" data-acao="enviado" data-id="' + esc(m.id) + '" data-canal="sms" href="sms:+' + c.t + '?&body=' + encodeURIComponent(msg) + '">SMS' + marca('sms') + '</a>';
@@ -421,9 +428,9 @@
         if (S.gerirPessoas) acoes += '<select data-acao="tipoSel" data-id="' + esc(m.id) + '" aria-label="Tipo de ' + esc(m.name) + '"><option value="participante"' + (m.tipo === 'participante' || !m.tipo ? ' selected' : '') + '>Participante</option><option value="leitura"' + (m.tipo === 'leitura' ? ' selected' : '') + '>Só leitura</option><option value="gestor"' + (m.tipo === 'gestor' ? ' selected' : '') + '>Gestor</option></select>';
         if (S.gerirPessoas && m.entrou) acoes += '<button class="b" data-acao="liberta" data-id="' + esc(m.id) + '" title="Se alguém escolheu este nome por engano: o aparelho dele perde o acesso e o lugar fica livre">' + (S.conf === 'lib:' + m.id ? 'Libertar? Toca outra vez' : 'Libertar lugar') + '</button>';
         if (S.gerirPessoas) acoes += '<button class="b perigo" data-acao="remover" data-id="' + esc(m.id) + '" title="Retirar do chat (o link dela deixa de funcionar)">' + (S.conf === 'rem:' + m.id ? 'Retirar? Toca outra vez' : '✕') + '</button>';
-        var enviado = S.enviados[enviadoKey(m.id, 'wa')] || S.enviados[enviadoKey(m.id, 'sms')] || S.enviados[enviadoKey(m.id, 'mail')];
+        var enviado = jaEnviado(m, 'wa') || jaEnviado(m, 'sms') || jaEnviado(m, 'mail');
         h += '<div class="linha">' + avatar(m.name, m.id) + '<div class="nm">' + esc(m.name) + (variasG ? '<small>' + esc(m.grupo || '') + '</small>' : '') +
-          '<div style="margin-top:3px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">' + chipContacto(p, c) + (enviado ? '<span class="tag ok">enviado</span>' : '') + (m.entrou ? '<span class="tag ok">entrou</span>' : '') + (m.externo ? '<span class="tag">de fora</span>' : '') +
+          '<div style="margin-top:3px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">' + chipContacto(p, c) + (enviado ? '<span class="tag ok">enviado</span>' : '') + (m.entrou ? '<span class="tag ok">entrou</span>' : '') + (S.online.indexOf(m.id) >= 0 ? '<span class="tag ok" style="background:#1fa855;color:#fff">● ligado</span>' : '') + (m.externo ? '<span class="tag">de fora</span>' : '') +
           (m.tipo === 'gestor' ? '<span class="tag aviso">gestor</span>' : m.tipo === 'leitura' ? '<span class="tag">só leitura</span>' : '') + '</div></div>' +
           '<div style="display:flex;gap:6px;flex:none">' + botaoContacto(p) + '</div><div class="ac">' + acoes + '</div></div>' + (S.edita === m.id ? linhaEditar(p) : '') + (S.busca && S.busca.id === m.id ? linhaBusca(p) : '');
       });
@@ -442,7 +449,8 @@
       var corpo;
       if (S.vista === 'carregar') corpo = '<div class="spin" aria-label="A carregar"></div>';
       else corpo = (S.vista === 'gerir' && S.doc ? gerir() : escolher());
-      var sub = S.doc ? 'Chat criado · ' + S.doc.membros.length + ' pessoas' : 'Novo chat';
+      var lig = S.doc ? S.doc.membros.filter(function (m) { return S.online.indexOf(m.id) >= 0; }).length : 0;
+      var sub = S.doc ? 'Chat criado · ' + S.doc.membros.length + ' pessoas' + (lig ? ' · ' + lig + ' ligadas' : '') : 'Novo chat';
       el.innerHTML = '<div class="top"><b>Chat do evento<small>' + esc(ctx.titulo || '') + ' · ' + esc(sub) + '</small></b><button class="x" data-acao="sair" aria-label="Fechar">✕</button></div>' +
         '<div class="corpo">' + (S.erro ? '<div class="erro" role="alert">' + esc(S.erro) + '</div>' : '') + corpo + '</div>';
     }
@@ -603,7 +611,7 @@
         var fila = porEnviar();
         if (!fila.length) { S.msgEnvio = ''; desenhar(); return; }
         var m1 = fila[0], c1 = eu({ id: m1.id, name: m1.name });
-        S.enviados[enviadoKey(m1.id, 'wa')] = 1; lsSet(LS_ENV, S.enviados);
+        marcarEnviado(m1.id, 'wa');
         S.msgEnvio = 'A abrir o WhatsApp de ' + m1.name + '… envia a mensagem e volta aqui para a próxima.';
         var al = document.createElement('a'); al.href = 'https://wa.me/' + c1.t + '?text=' + encodeURIComponent(texto(m1.name, m1.token)); al.target = '_blank'; al.rel = 'noopener';
         document.body.appendChild(al); al.click(); al.remove();
@@ -673,7 +681,7 @@
         copiarTexto(tx, function () { S.copiado = k; desenhar(); setTimeout(function () { if (S.copiado === k) { S.copiado = null; desenhar(); } }, 1800); });
         return;
       }
-      if (a === 'enviado') { S.enviados[enviadoKey(id, b.getAttribute('data-canal'))] = 1; lsSet(LS_ENV, S.enviados); setTimeout(desenhar, 300); return; }   // o link abre sozinho
+      if (a === 'enviado') { marcarEnviado(id, b.getAttribute('data-canal')); setTimeout(desenhar, 300); return; }   // o link abre sozinho
       if (a === 'voltaGerir') { S.vista = 'gerir'; desenhar(); return; }
       if (a === 'maisPessoas') { S.todos = true; crew.forEach(function (c) { S.sel[c.id] = !S.doc.membros.some(function (m) { return m.id === c.id; }) && (!temFiltro || !!c.filtrado); }); S.vista = 'escolher'; desenhar(); return; }
       if (a === 'criar') {
@@ -697,9 +705,24 @@
     if (NAT) sincronizarNativo(false);
     if (typeof document !== 'undefined' && !NAT) carregarGsi().catch(function () { /* sem Google: continua a haver ficheiro e telemovel */ });
     H('?key=' + encodeURIComponent(ctx.sig)).then(function (j) {
-      if (j.existe) { S.doc = j; S.vista = 'gerir'; } else S.vista = 'escolher';
+      if (j.existe) { S.doc = j; S.online = j.online || []; S.ass = JSON.stringify([j.membros, j.online, j.convite]); S.vista = 'gerir'; } else S.vista = 'escolher';
       desenhar();
     }).catch(function (e) { S.vista = 'escolher'; S.erro = (e && e.message) || 'Sem ligação ao servidor.'; desenhar(); });
+    // enquanto o painel esta aberto, vai buscar o estado real ao servidor (quem entrou, quem esta ligado, o que ja foi enviado)
+    var tm = setInterval(function () {
+      if (!document.body.contains(el)) { clearInterval(tm); return; }
+      var a = document.activeElement;
+      if (S.vista !== 'gerir' || S.ocupado || document.hidden || (a && el.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
+      H('?key=' + encodeURIComponent(ctx.sig)).then(function (j) {
+        if (!j || !j.existe || S.vista !== 'gerir' || S.ocupado) return;
+        var ass = JSON.stringify([j.membros, j.online, j.convite]);
+        if (ass === S.ass) return;
+        S.ass = ass; S.doc = j; S.online = j.online || [];
+        var c0 = el.querySelector('.corpo'), y0 = c0 ? c0.scrollTop : 0, e0 = el.scrollTop;
+        desenhar();
+        var c1 = el.querySelector('.corpo'); if (c1) c1.scrollTop = y0; el.scrollTop = e0;
+      }).catch(function () {});
+    }, 15000);
   }
 
   root.__vtChat = { abrir: abrir, _t: { chave: chave, fone: fone, lerCsv: lerCsv, lerVcf: lerVcf, candidatos: candidatos, candidatosAprox: candidatosAprox, contactoDe: contactoDe } };

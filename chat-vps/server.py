@@ -107,6 +107,8 @@ class BD:
             self.c.execute("ALTER TABLE membro ADD COLUMN tipo TEXT NOT NULL DEFAULT 'participante'")
         if 'externo' not in cols:
             self.c.execute('ALTER TABLE membro ADD COLUMN externo INTEGER NOT NULL DEFAULT 0')   # 1 = nao vem da escala (acrescentado a mao)
+        if 'enviado' not in cols:
+            self.c.execute("ALTER TABLE membro ADD COLUMN enviado TEXT NOT NULL DEFAULT ''")      # canais por onde o dono ja enviou o link (wa,sms,mail): so a marca, nunca o contacto
         mc = [c['name'] for c in self.c.execute('PRAGMA table_info(msg)').fetchall()]
         for col, tipo in (('foto', 'TEXT'), ('foto_bytes', 'INTEGER NOT NULL DEFAULT 0'), ('foto_w', 'INTEGER NOT NULL DEFAULT 0'), ('foto_h', 'INTEGER NOT NULL DEFAULT 0')):
             if col not in mc:
@@ -461,7 +463,7 @@ def vista_dono(bd, sala):
     return {
         'existe': True, 'sala': s['id'], 'evento': s['evento'], 'expira': s['expira'],
         'dono': {'nome': s['dono_nome'], 'token': s['dono_token']},
-        'membros': [{'id': r['pid'], 'name': r['nome'], 'grupo': r['grupo'], 'token': r['token'], 'entrou': bool(r['reclamado']), 'tipo': r['tipo'], 'externo': bool(r['externo'])} for r in bd.q('SELECT * FROM membro WHERE sala=? ORDER BY externo, nome', sala)],
+        'membros': [{'id': r['pid'], 'name': r['nome'], 'grupo': r['grupo'], 'token': r['token'], 'entrou': bool(r['reclamado']), 'tipo': r['tipo'], 'externo': bool(r['externo']), 'enviado': [x for x in (r['enviado'] or '').split(',') if x]} for r in bd.q('SELECT * FROM membro WHERE sala=? ORDER BY externo, nome', sala)],
         'convite': ({'token': cv['token'], 'ativo': bool(cv['ativo'])} if cv else None),
     }
 
@@ -545,7 +547,10 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
         key = limpa(req.query.get('key'), 300)
         if not key:
             return json_resp({'error': 'evento invalido'}, 400)
-        return json_resp(vista_dono(chat.bd, id_da_sala(key)))
+        v = vista_dono(chat.bd, id_da_sala(key))
+        if v.get('existe'):
+            v['online'] = chat.presentes(v['sala'])          # quem esta ligado agora (referencia real para o painel do dono)
+        return json_resp(v)
 
     @r.post(P + '/api/admin/criar')
     async def admin_criar(req):
@@ -621,6 +626,28 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
             return json_resp({'error': 'nao encontrado'}, 404)
         await chat.difundir(sala, {'t': 'membros'})
         return json_resp(vista_dono(chat.bd, sala))
+
+    @r.post(P + '/api/admin/enviado')
+    async def admin_enviado(req):
+        chat.exige_admin(req)
+        b = await ler_json(req)
+        sala = id_da_sala(limpa(b.get('key'), 300))
+        canal = limpa(b.get('canal'), 10)
+        if canal not in ('wa', 'sms', 'mail'):
+            return json_resp({'error': 'canal invalido'}, 400)
+        pid = limpa(b.get('id'), 24)
+        m = chat.bd.um('SELECT enviado FROM membro WHERE sala=? AND pid=?', sala, pid)
+        if not m:
+            return json_resp({'error': 'nao encontrado'}, 404)
+        canais = set(x for x in (m['enviado'] or '').split(',') if x)
+        if b.get('valor', True):
+            canais.add(canal)
+        else:
+            canais.discard(canal)
+        chat.bd.x('UPDATE membro SET enviado=? WHERE sala=? AND pid=?', ','.join(sorted(canais)), sala, pid)
+        v = vista_dono(chat.bd, sala)
+        v['online'] = chat.presentes(sala)
+        return json_resp(v)
 
     @r.post(P + '/api/admin/remover')
     async def admin_remover(req):
