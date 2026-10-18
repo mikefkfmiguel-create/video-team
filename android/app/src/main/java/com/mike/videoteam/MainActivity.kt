@@ -6,6 +6,7 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.ContactsContract
 import android.webkit.CookieManager
@@ -13,7 +14,10 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
+import android.view.ViewGroup
+import android.view.WindowInsets
 import android.webkit.WebViewClient
+import android.widget.FrameLayout
 import android.widget.Toast
 import org.json.JSONArray
 import org.json.JSONObject
@@ -48,7 +52,24 @@ class MainActivity : Activity() {
             assets.open("chat.js").bufferedReader().use { it.readText() }   // chat do evento (ecra do dono)
 
         web = WebView(this)
-        setContentView(web)
+        // Android 15+ (targetSdk 35): a app desenha por baixo da barra de estado e da barra de navegacao. A pagina fica entre elas
+        // (e acima do teclado), com o fundo do tema a encher o resto.
+        val raiz = FrameLayout(this)
+        raiz.addView(web, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        raiz.setOnApplyWindowInsetsListener { v, insets ->
+            val e: Int; val t: Int; val d: Int; val b: Int
+            if (Build.VERSION.SDK_INT >= 30) {
+                val barras = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+                val teclado = insets.getInsets(WindowInsets.Type.ime())
+                e = barras.left; t = barras.top; d = barras.right; b = maxOf(barras.bottom, teclado.bottom)
+            } else {
+                @Suppress("DEPRECATION")
+                run { e = insets.systemWindowInsetLeft; t = insets.systemWindowInsetTop; d = insets.systemWindowInsetRight; b = insets.systemWindowInsetBottom }
+            }
+            v.setPadding(e, t, d, b)
+            insets
+        }
+        setContentView(raiz)
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
         CookieManager.getInstance().setAcceptCookie(true)
