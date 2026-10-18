@@ -111,6 +111,25 @@
       }).catch(function (e) { S.loadErr = e.message || 'Sem ligação ao servidor.'; S.status = ''; }).then(paint);
     }
 
+    // link «Escala do Evento» criado aqui mesmo (liga a publicacao de sala e funcao e cria o link do evento)
+    function blocoLink() {
+      if (S.linkMsg) return '<p class="note">' + esc(S.linkMsg) + '</p>';
+      if (!S.linkUrl) return '';
+      var msg = 'Escala do evento «' + (ctx.titulo || 'evento') + '»: ' + S.linkUrl;
+      return '<div class="ln" style="display:block"><div style="word-break:break-all;font-family:ui-monospace,Menlo,monospace;font-size:12px;margin:6px 0">' + esc(S.linkUrl) + '</div>' +
+        '<button class="b" data-a="linkCopiar">' + (S.linkCopiado ? 'Copiado ✓' : 'Copiar o link') + '</button> <a class="b" href="https://wa.me/?text=' + encodeURIComponent(msg) + '" target="_blank" rel="noopener">Enviar por WhatsApp</a></div>';
+    }
+    function copiarTxt(tx, feito) {
+      function viaExec() {
+        var ta = document.createElement('textarea'); ta.value = tx; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+        document.body.appendChild(ta); ta.select(); try { ta.setSelectionRange(0, tx.length); } catch (e) {}
+        var ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
+        ta.remove(); feito(ok);
+      }
+      try { if (navigator.clipboard && window.isSecureContext) { navigator.clipboard.writeText(tx).then(function () { feito(true); }, viaExec); return; } } catch (e) {}
+      viaExec();
+    }
+
     function mudou(label) {
       if (S.snap) { S.undo.push(S.snap); if (S.undo.length > 30) S.undo.shift(); }
       S.snap = null;
@@ -274,7 +293,8 @@
         return '<label class="ck"><input type="checkbox" data-regra="' + r + '"' + (d.regras[r] === 'off' ? '' : ' checked') + '> ' + esc(REGRA_TXT[r]) + '</label>';
       }).join('') + '</div>';
       h += '<h4>Link «Escala do Evento»</h4><div class="ln"><label class="ck"><input type="checkbox" data-publicar' + (d.link.publicado ? ' checked' : '') + '> Mostrar sala e função no link (só consulta)</label></div>' +
-        '<p class="note">Desligado por defeito. Os técnicos só veem sala e função, nunca os avisos nem a configuração. O link cria-se em «Partilhar só este projeto» no painel do evento.</p>';
+        '<div class="ln"><button class="b pri" data-a="linkEvento">Publicar e obter o link deste evento</button></div>' + blocoLink() +
+        '<p class="note">Os técnicos só veem sala e função, nunca os avisos nem a configuração. O botão liga «Mostrar sala e função» e cria o link «Escala do Evento» (válido 30 dias, só deste evento).</p>';
       h += '<h4>Exportar e importar</h4><div class="ln"><button class="b" data-a="csv">Descarregar CSV (formato da folha)</button><button class="b" data-a="csv2">CSV para Excel (;)</button>' +
         '<button class="b" data-a="imprimir">Imprimir / PDF</button></div>' +
         '<div class="ln"><button class="b" data-a="importar">Importar da folha atual…</button></div>' +
@@ -465,6 +485,19 @@
       var a = t.dataset.a; if (!a || !d && a !== 'fechar' && a !== 'reload') { if (a === 'fechar') close(); if (a === 'reload') carregar(true); return; }
       if (a === 'fechar') { if (S.status === 'a guardar…') { clearTimeout(timer); gravar(); } close(); }
       else if (a === 'reload') carregar(true);
+      else if (a === 'linkEvento') {
+        if (!d.link.publicado) { d.link.publicado = true; mudou(); }
+        S.linkMsg = 'A criar o link…'; S.linkUrl = ''; paint();
+        H('/api/admin/share', { body: { key: ctx.sig, label: ctx.titulo || 'Evento', d: ctx.anchor } }).then(function (r) { return r.json(); }).then(function (j) {
+          if (!j.token) { S.linkMsg = j.error || 'Não consegui criar o link.'; }
+          else {
+            var base = ctx.webBase || (/7eventos/i.test(location.hostname) ? 'https://mikefkfmiguel-create.github.io/video-team/' : location.origin + location.pathname);
+            S.linkUrl = base + '?p=' + j.token; S.linkMsg = ''; S.linkCopiado = false;
+          }
+          paint();
+        }).catch(function () { S.linkMsg = 'Sem ligação ao servidor.'; paint(); });
+      }
+      else if (a === 'linkCopiar') { copiarTxt(S.linkUrl, function (ok) { S.linkCopiado = ok; paint(); }); }
       else if (a === 'retry') { clearTimeout(timer); gravar(); }
       else if (a === 'undo') anular();
       else if (a === 'selmode') { S.selMode = !S.selMode; if (!S.selMode) S.sel = {}; paint(); }

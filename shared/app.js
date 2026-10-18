@@ -544,7 +544,7 @@
       var ctxSalas = function (pin) {
         document.getElementById('sheet').classList.remove('open');
         window.__vtSalas.abrir({
-          api: cfg.api || cfg.salasApi, pin: pin, sig: sig(e), titulo: e.event || ('OS ' + e.code), evento: e.event, code: e.code, anchor: state.dmy,
+          api: cfg.api || cfg.salasApi, pin: pin, sig: sig(e), titulo: e.event || ('OS ' + e.code), evento: e.event, code: e.code, anchor: state.dmy, webBase: cfg.webBase,
           onAuthFail: cfg.api ? null : function () { store('vt.salaspin', ''); }
         });
       };
