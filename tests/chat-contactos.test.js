@@ -83,4 +83,15 @@ t('o acerto a mao ganha sempre', () => {
   assert.equal(r.de, 'manual');
 });
 
+t('abreviaturas: «Rafa» para «Rafael Anchieta» e sugerido, nunca automatico', () => {
+  const L = C.lerCsv('First Name,Last Name,Phone 1 - Value\nRafa,,961 000 001\nTiago,,962 000 002\nTi,,963 000 003\nZe,,964 000 004\nTiago,Mota,965 000 005');
+  const r = C.contactoDe({ id: '1', name: 'Rafael Anchieta' }, L, {});
+  assert.ok(r.ambiguo && r.aproximado && r.ambiguo.length === 1 && r.ambiguo[0].t[0] === '351961000001', JSON.stringify(r));
+  assert.equal(C.contactoDe({ id: '1', name: 'Rafael Anchieta' }, L, {}).t, undefined, 'nao preenche sozinho');
+  const g = C.contactoDe({ id: '2', name: 'Tiago Mota Gonçalves' }, L, {});
+  assert.equal(g.t, '351965000005', 'Tiago Mota esta contido em Tiago Mota Goncalves: esse sim casa sozinho');
+  assert.deepEqual(C.contactoDe({ id: '3', name: 'Zeca Silva' }, L, {}), {}, '«Ze» tem 2 letras: demasiado curto para sugerir');
+  assert.deepEqual(C.contactoDe({ id: '4', name: 'Carlos Lopes' }, L, {}), {}, 'nada parecido: vazio');
+});
+
 console.log('\n' + n + ' testes ok');

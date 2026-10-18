@@ -98,6 +98,28 @@
     return cand;
   }
 
+  function candidatosAprox(nome, lista) {
+    var ts = chave(nome).split(' ');
+    if (!ts[0]) return [];
+    return lista.filter(function (c) {
+      var a = c.k.split(' '), j = 0;
+      if (!a[0]) return false;
+      for (var i = 0; i < a.length; i++) {
+        var t = a[i], achou = -1;
+        if (t.length < 3) return false;
+        for (var k = j; k < ts.length; k++) { if (ts[k].indexOf(t) === 0) { achou = k; break; } }
+        if (achou < 0) return false;
+        j = achou + 1;
+      }
+      return true;
+    });
+  }
+  function unicos(c) {
+    var vistos = {}, out = [];
+    c.forEach(function (x) { var id = (x.t[0] || '') + '|' + x.e; if (!vistos[id]) { vistos[id] = 1; out.push(x); } });
+    return out;
+  }
+
   // o que se sabe de uma pessoa: acerto a mao > contacto importado (se so ha um) > varios candidatos > nada
   function contactoDe(p, lista, manual) {
     var m = manual[p.id];
@@ -106,6 +128,8 @@
     c.forEach(function (x) { var id = (x.t[0] || '') + '|' + x.e; if (!tels[id]) { tels[id] = 1; uniq.push(x); } });
     if (uniq.length === 1) return { t: uniq[0].t[0] || '', e: uniq[0].e || '', de: 'google', quem: uniq[0].n };
     if (uniq.length > 1) return { ambiguo: uniq };
+    var ap = unicos(candidatosAprox(p.name, lista));      // «Rafa» para «Rafael Anchieta»: so se sugere, quem confirma es tu
+    if (ap.length) return { ambiguo: ap, aproximado: true };
     return {};
   }
 
@@ -221,7 +245,7 @@
 
     function chipContacto(p, c) {
       if (c.ambiguo) {
-        return '<select data-acao="cand" data-id="' + esc(p.id) + '"><option value="">Vários contactos — escolhe…</option>' + c.ambiguo.map(function (x, i) { return '<option value="' + i + '">' + esc(x.n + (x.t[0] ? ' · +' + x.t[0] : '')) + '</option>'; }).join('') + '</select>';
+        return '<select data-acao="cand" data-id="' + esc(p.id) + '"><option value="">' + (c.aproximado ? 'Será um destes? Escolhe para confirmar…' : 'Vários contactos — escolhe…') + '</option>' + c.ambiguo.map(function (x, i) { return '<option value="' + i + '">' + esc(x.n + (x.t[0] ? ' · +' + x.t[0] : '')) + '</option>'; }).join('') + '</select>';
       }
       if (c.t) return '<span class="tag ok" title="' + esc(c.quem || '') + '">' + esc(foneBonito(c.t)) + '</span>';
       if (c.e) return '<span class="tag">só email</span>';
@@ -371,9 +395,9 @@
       if (a === 'sel') { S.sel[t.getAttribute('data-id')] = t.checked; lerCaixas(); desenhar(); }
       else if (a === 'cand' && t.value !== '') {
         var id = t.getAttribute('data-id'), p = crew.filter(function (c) { return c.id === id; })[0] || (S.doc && S.doc.membros.filter(function (m) { return m.id === id; })[0]);
-        var c = candidatos(p.name, S.lista), uniq = [], vistos = {};
-        c.forEach(function (x) { var k = (x.t[0] || '') + '|' + x.e; if (!vistos[k]) { vistos[k] = 1; uniq.push(x); } });
-        var x = uniq[+t.value];
+        var c = candidatos(p.name, S.lista);
+        if (!c.length) c = candidatosAprox(p.name, S.lista);
+        var x = unicos(c)[+t.value];
         if (x) { S.manual[id] = { t: x.t[0] || '', e: x.e || '' }; lsSet(LS_M, S.manual); lerCaixas(); desenhar(); }
       }
     });
@@ -460,6 +484,6 @@
     }).catch(function (e) { S.vista = 'escolher'; S.erro = (e && e.message) || 'Sem ligação ao servidor.'; desenhar(); });
   }
 
-  root.__vtChat = { abrir: abrir, _t: { chave: chave, fone: fone, lerCsv: lerCsv, lerVcf: lerVcf, candidatos: candidatos, contactoDe: contactoDe } };
+  root.__vtChat = { abrir: abrir, _t: { chave: chave, fone: fone, lerCsv: lerCsv, lerVcf: lerVcf, candidatos: candidatos, candidatosAprox: candidatosAprox, contactoDe: contactoDe } };
   if (typeof module !== 'undefined' && module.exports) module.exports = root.__vtChat;
 })(typeof window !== 'undefined' ? window : globalThis);

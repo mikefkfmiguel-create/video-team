@@ -271,6 +271,18 @@ try:
         ok(chamar("/chat/api/sala", k=tok_ana)[0] == 401 and chamar("/chat/api/sala", k=dono_href.split("#")[1])[0] == 401, "fechar o chat: todos os links deixam de funcionar")
         ok(chamar("/api/admin/chat?key=" + urllib.parse.quote(SIG), pin="dono-teste")[1]["existe"] is False, "e a sala deixa de existir")
 
+        # ---- abreviaturas: «Rafa» na agenda para «Rafael Anchieta_12H» no Video Team (sugere, quem confirma e o dono)
+        pag.evaluate("document.getElementById('vtch').remove()")
+        pag.evaluate("localStorage.removeItem('vt.gcontatos'); localStorage.removeItem('vt.contactos')")
+        pag.evaluate("window.__vtChat.abrir({ api: '%s', pin: 'dono-teste', sig: 'os:7:Outro', titulo: 'Outro', crew: [{id:'9', name:'Rafael Anchieta_12H', grupo:'Técnico de Video', days:['2026-10-21'], filtrado:true}] })" % API)
+        pag.wait_for_selector("#vtch .linha", timeout=15000)
+        pag.evaluate("window.__pick = [{name: ['Rafa'], tel: ['961 000 001'], email: []}]")
+        pag.click("[data-acao=pickVarios]")
+        pag.wait_for_selector("#vtch select[data-acao=cand]", timeout=5000)
+        ok("Será um destes" in pag.inner_text("#vtch select[data-acao=cand]") and "sem contacto" not in pag.inner_text("#vtch .nm"), "«Rafa» na agenda: sugere-o para «Rafael Anchieta» e pede confirmacao (nao preenche sozinho)")
+        pag.select_option("#vtch select[data-acao=cand]", index=1)
+        ok("+351 961 000 001" in pag.inner_text("#vtch .nm"), "confirmado: o Rafael fica com o numero do «Rafa»")
+
         # ---- chave errada
         pag.evaluate("document.getElementById('vtch').remove()")
         pag.evaluate("window.__vtChat.abrir({ api: '%s', pin: 'errada', sig: 'x', titulo: 'x', crew: CREW })" % API)
