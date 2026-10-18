@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
+<title>Video Team · Chat</title>
+<meta name="description" content="Chat do evento">
+<meta name="theme-color" content="#0C1020">
+<meta name="robots" content="noindex">
+<link rel="manifest" href="manifest-chat.json">
+<link rel="icon" href="icons/favicon.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<style>
+  :root { color-scheme: light dark; --bg: #f4f6fb; --panel: #fff; --ink: #0C1020; --mut: #5b6478; --line: #e1e6f0; --acc: #2E7BFF; --acc2: #1246E6; --soft: #eef1f8; --mine: #dbe8ff; --mine-ink: #0C1020; --aviso: #fff4d6; --aviso-ink: #4a3500; --aviso-line: #f0d98a; --err: #d6334b; --ok: #1f9d55; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0C1020; --panel: #131a2c; --ink: #e8ecf5; --mut: #8f9ab0; --line: #232c42; --acc: #3B8CFF; --acc2: #1246E6; --soft: #182036; --mine: #1b3a74; --mine-ink: #f1f5ff; --aviso: #3a2f10; --aviso-ink: #ffe9a8; --aviso-line: #6b5518; --err: #ff6b81; --ok: #3ccf7e; } }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--ink); font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overscroll-behavior: none; }
+  [hidden] { display: none !important; }
+  #app { height: 100dvh; display: flex; flex-direction: column; max-width: 720px; margin: 0 auto; background: var(--bg); }
+  header { flex: none; display: flex; align-items: center; gap: 10px; padding: 10px 14px; padding-top: max(10px, env(safe-area-inset-top)); background: var(--panel); border-bottom: 1px solid var(--line); }
+  .logo { width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg, var(--acc2), var(--acc)); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 13px; flex: none; letter-spacing: .03em; }
+  .tit { min-width: 0; flex: 1; }
+  .tit b { display: block; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tit #sub { display: block; font-size: 12px; color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tit #sub i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--mut); margin-right: 5px; }
+  .tit span i.on { background: var(--ok); }
+  .ib { flex: none; width: 40px; height: 40px; border: 0; border-radius: 10px; background: var(--soft); color: var(--ink); font-size: 18px; cursor: pointer; }
+  #estado { flex: none; text-align: center; font-size: 12px; padding: 4px 10px; background: var(--soft); color: var(--mut); }
+  #estado.mal { background: #ffe3e7; color: #8a1230; }
+  @media (prefers-color-scheme: dark) { #estado.mal { background: #4a1823; color: #ffc2cc; } }
+  #fixas { flex: none; max-height: 30vh; overflow: auto; border-bottom: 1px solid var(--aviso-line); background: var(--aviso); color: var(--aviso-ink); }
+  .fixa { padding: 8px 14px; font-size: 13px; display: flex; gap: 8px; align-items: flex-start; }
+  .fixa + .fixa { border-top: 1px solid var(--aviso-line); }
+  .fixa b { flex: none; }
+  .fixa .tx { white-space: pre-wrap; word-break: break-word; flex: 1; }
+  #lista { flex: 1; overflow-y: auto; padding: 12px 12px 6px; display: flex; flex-direction: column; gap: 3px; -webkit-overflow-scrolling: touch; }
+  .dia { align-self: center; margin: 10px 0 6px; padding: 3px 12px; font-size: 12px; color: var(--mut); background: var(--soft); border-radius: 999px; }
+  .linha { display: flex; gap: 8px; align-items: flex-end; max-width: 100%; }
+  .linha.eu { justify-content: flex-end; }
+  .av { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; color: #fff; }
+  .av.vazio { visibility: hidden; }
+  .bal { max-width: min(82%, 520px); padding: 7px 11px 6px; border-radius: 16px; background: var(--panel); border: 1px solid var(--line); border-bottom-left-radius: 5px; position: relative; }
+  .eu .bal { background: var(--mine); color: var(--mine-ink); border-color: transparent; border-bottom-left-radius: 16px; border-bottom-right-radius: 5px; }
+  .bal.aviso { background: var(--aviso); color: var(--aviso-ink); border-color: var(--aviso-line); }
+  .quem { font-size: 12px; font-weight: 700; margin-bottom: 1px; }
+  .quem em { font-style: normal; font-weight: 500; color: var(--mut); margin-left: 4px; }
+  .txt { white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
+  .txt a { color: inherit; text-decoration: underline; }
+  .hora { display: block; text-align: right; font-size: 11px; color: var(--mut); margin-top: 1px; }
+  .eu .hora { color: inherit; opacity: .65; }
+  .bal.pend { opacity: .6; }
+  .bal.falhou { border-color: var(--err); }
+  .acoes { display: flex; gap: 6px; margin-top: 6px; }
+  .acoes button { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 8px; padding: 4px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+  #vazio { margin: auto; text-align: center; color: var(--mut); padding: 24px; }
+  #novas { position: absolute; right: 16px; bottom: 86px; border: 0; border-radius: 999px; padding: 8px 14px; background: var(--acc); color: #fff; font: inherit; font-size: 13px; font-weight: 600; box-shadow: 0 4px 14px rgba(0,0,0,.3); cursor: pointer; }
+  footer { flex: none; display: flex; gap: 8px; align-items: flex-end; padding: 8px 10px; padding-bottom: max(8px, env(safe-area-inset-bottom)); background: var(--panel); border-top: 1px solid var(--line); }
+  #texto { flex: 1; min-height: 44px; max-height: 140px; resize: none; border: 1px solid var(--line); border-radius: 22px; padding: 11px 16px; background: var(--bg); color: var(--ink); font: inherit; font-size: 16px; line-height: 1.3; }
+  #texto:focus { outline: 2px solid var(--acc); outline-offset: 0; }
+  #enviar { flex: none; width: 44px; height: 44px; border: 0; border-radius: 50%; background: linear-gradient(135deg, var(--acc2), var(--acc)); color: #fff; font-size: 19px; cursor: pointer; }
+  #enviar:disabled { opacity: .45; }
+  #modoAviso { flex: none; height: 44px; padding: 0 12px; border: 1px solid var(--aviso-line); border-radius: 22px; background: var(--aviso); color: var(--aviso-ink); font: inherit; font-size: 13px; cursor: pointer; }
+  #modoAviso[aria-pressed=true] { background: #f5b800; color: #2a1d00; border-color: #f5b800; font-weight: 700; }
+  /* folha com a lista de pessoas */
+  #folha { position: fixed; inset: 0; z-index: 10; background: rgba(0,0,0,.5); display: flex; align-items: flex-end; justify-content: center; }
+  #folha .cx { width: min(520px, 100%); max-height: 78dvh; overflow: auto; background: var(--panel); border-radius: 18px 18px 0 0; padding: 16px 16px max(16px, env(safe-area-inset-bottom)); }
+  #folha h2 { margin: 0 0 10px; font-size: 17px; display: flex; justify-content: space-between; align-items: center; }
+  #folha h2 button { border: 0; background: var(--soft); color: var(--ink); width: 34px; height: 34px; border-radius: 9px; font-size: 16px; cursor: pointer; }
+  .pessoa { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid var(--line); }
+  .pessoa .n { flex: 1; min-width: 0; }
+  .pessoa .n small { display: block; color: var(--mut); font-size: 12px; }
+  .pessoa .pt { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
+  .pessoa .pt.on { background: var(--ok); }
+  /* ecra de erro / entrada */
+  #cartao { height: 100dvh; display: grid; place-items: center; padding: 20px; text-align: center; }
+  #cartao div { max-width: 340px; }
+  #cartao h1 { font-size: 22px; margin: 14px 0 6px; }
+  #cartao p { color: var(--mut); margin: 0; }
+  .spin { width: 28px; height: 28px; border: 3px solid var(--line); border-top-color: var(--acc); border-radius: 50%; margin: 0 auto; animation: sp .8s linear infinite; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+</style>
+</head>
+<body>
+<div id="cartao"><div><div class="spin" id="spin"></div><h1 id="cTit">A abrir o chat…</h1><p id="cTxt"></p></div></div>
+
+<div id="app" hidden>
+  <header>
+    <div class="logo">VT</div>
+    <div class="tit"><b id="evento">Chat</b><span id="sub"><i id="pt"></i><span id="subTxt"></span></span></div>
+    <button class="ib" id="btPessoas" aria-label="Quem está no chat" title="Pessoas">👥</button>
+  </header>
+  <div id="estado" role="status" hidden></div>
+  <div id="fixas" hidden></div>
+  <main id="lista" role="log" aria-live="polite" aria-label="Mensagens"></main>
+  <button id="novas" hidden>↓ Mensagens novas</button>
+  <footer>
+    <button id="modoAviso" aria-pressed="false" hidden title="Enviar como aviso fixo para todos">📌 Aviso</button>
+    <textarea id="texto" rows="1" placeholder="Escreve uma mensagem" maxlength="2000" enterkeyhint="send" aria-label="Mensagem"></textarea>
+    <button id="enviar" aria-label="Enviar">➤</button>
+  </footer>
+</div>
+
+<div id="folha" hidden role="dialog" aria-modal="true" aria-label="Pessoas">
+  <div class="cx"><h2><span id="folhaTit">Pessoas</span><button id="fechaFolha" aria-label="Fechar">✕</button></h2><div id="pessoas"></div></div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var PROD = 'https://video-team.avkvideoshare.workers.dev';
+  var local = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+  var API = (local && new URLSearchParams(location.search).get('api')) || PROD;
+  var KEY = 'vt.chat.k';
+  var HB = (local && +new URLSearchParams(location.search).get('hb')) || 15000;   // batimento: ping de HB em HB ms; sem resposta em 2,7×HB = ligacao morta
+
+  function $(id) { return document.getElementById(id); }
+  function guardar(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function ler(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+
+  // o link pessoal vem no #fragmento (nunca vai para o servidor); guarda-se para o atalho do ecra principal reabrir
+  var token = (location.hash || '').replace(/^#/, '').trim();
+  if (/^[a-f0-9]{40}$/.test(token)) { guardar(KEY, token); try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} }
+  else token = ler(KEY) || '';
+
+  // abrir outro link pessoal com o chat ja aberto (so muda o #): recarrega com o novo
+  window.addEventListener('hashchange', function () {
+    var t = (location.hash || '').replace(/^#/, '').trim();
+    if (/^[a-f0-9]{40}$/.test(t)) { guardar(KEY, t); location.reload(); }
+  });
+
+  function cartao(tit, txt, semSpin) { $('app').hidden = true; $('cartao').hidden = false; $('cTit').textContent = tit; $('cTxt').textContent = txt || ''; $('spin').hidden = !!semSpin; }
+
+  if (!/^[a-f0-9]{40}$/.test(token)) { cartao('Falta o teu link', 'Abre o link pessoal que a régie te enviou. Cada pessoa tem o seu.', true); return; }
+
+  var eu = null, membros = {}, msgs = [], ultimoId = 0, ws = null, tentativas = 0, online = {}, ligado = false, fechado = false;
+  var lastRx = 0, modoAviso = false, naoLidas = 0, tituloBase = document.title;
+  var pendentes = {}, cidN = 0;
+
+  var CORES = ['#e0457b', '#2e7bff', '#18a47a', '#d9822b', '#8a5cf6', '#0e9bb8', '#c2410c', '#6d8f1a'];
+  function cor(pid) { var h = 0, s = String(pid); for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return CORES[h % CORES.length]; }
+  function iniciais(n) { var p = String(n).replace(/\([^)]*\)/g, ' ').trim().split(/\s+/).filter(function (x) { return /[A-Za-zÀ-ɏ]/.test(x); }); if (!p.length) return '?'; var a = p[0].match(/[A-Za-zÀ-ɏ]/)[0], b = p.length > 1 ? p[p.length - 1].match(/[A-Za-zÀ-ɏ]/)[0] : ''; return (a + b).toUpperCase(); }
+  function hhmm(ts) { return new Date(ts).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }); }
+  function diaTxt(ts) {
+    var d = new Date(ts), h = new Date(), ontem = new Date(); ontem.setDate(h.getDate() - 1);
+    if (d.toDateString() === h.toDateString()) return 'Hoje';
+    if (d.toDateString() === ontem.toDateString()) return 'Ontem';
+    return d.toLocaleDateString('pt-PT', { weekday: 'long', day: 'numeric', month: 'long' });
+  }
+
+  function http(caminho, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign({ 'X-Chat': token }, opts.headers || {});
+    return fetch(API + caminho, opts).then(function (r) { return r.json().then(function (j) { return { s: r.status, j: j }; }, function () { return { s: r.status, j: null }; }); });
+  }
+
+  // texto -> nos DOM; links http(s) clicaveis (nunca innerHTML)
+  function conteudo(txt) {
+    var frag = document.createDocumentFragment(), re = /(https?:\/\/[^\s<>"']+)/g, i = 0, m;
+    while ((m = re.exec(txt))) {
+      if (m.index > i) frag.appendChild(document.createTextNode(txt.slice(i, m.index)));
+      var url = m[1].replace(/[.,;:!?)]+$/, '');
+      var a = document.createElement('a'); a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = url; frag.appendChild(a);
+      i = m.index + url.length; re.lastIndex = i;
+    }
+    if (i < txt.length) frag.appendChild(document.createTextNode(txt.slice(i)));
+    return frag;
+  }
+
+  var listaEl = $('lista');
+  function noFim() { return listaEl.scrollHeight - listaEl.scrollTop - listaEl.clientHeight < 90; }
+  function paraOFim() { listaEl.scrollTop = listaEl.scrollHeight; $('novas').hidden = true; }
+
+  function desenhar() {
+    var estavaNoFim = noFim();
+    listaEl.textContent = '';
+    if (!msgs.length) {
+      var v = document.createElement('div'); v.id = 'vazio'; v.textContent = 'Ainda não há mensagens. Escreve a primeira.'; listaEl.appendChild(v);
+    }
+    var diaAnt = '', quemAnt = null, tsAnt = 0;
+    msgs.forEach(function (m) {
+      var d = diaTxt(m.ts);
+      if (d !== diaAnt) { var sep = document.createElement('div'); sep.className = 'dia'; sep.textContent = d; listaEl.appendChild(sep); diaAnt = d; quemAnt = null; }
+      var meu = eu && m.pid === eu.pid;
+      var seguida = quemAnt === m.pid && m.ts - tsAnt < 5 * 60000 && !m.aviso;
+      quemAnt = m.pid; tsAnt = m.ts;
+      var linha = document.createElement('div'); linha.className = 'linha' + (meu ? ' eu' : ''); linha.dataset.id = m.id;
+      if (!meu) {
+        var av = document.createElement('div'); av.className = 'av' + (seguida ? ' vazio' : ''); av.style.background = cor(m.pid); av.textContent = iniciais(m.nome); linha.appendChild(av);
+      }
+      var bal = document.createElement('div'); bal.className = 'bal' + (m.aviso ? ' aviso' : '') + (m.pendente ? ' pend' : '') + (m.falhou ? ' falhou' : '');
+      if (!meu && !seguida || m.aviso) {
+        var q = document.createElement('div'); q.className = 'quem'; q.style.color = m.aviso ? 'inherit' : cor(m.pid);
+        q.textContent = (m.aviso ? '📌 ' : '') + m.nome;
+        if (m.pid === 'dono') { var em = document.createElement('em'); em.textContent = 'régie'; q.appendChild(em); }
+        bal.appendChild(q);
+      }
+      var t = document.createElement('div'); t.className = 'txt'; t.appendChild(conteudo(m.texto)); bal.appendChild(t);
+      var h = document.createElement('span'); h.className = 'hora'; h.textContent = m.falhou ? 'não enviada · toca para tentar de novo' : (m.pendente ? 'a enviar…' : hhmm(m.ts)); bal.appendChild(h);
+      if (m.falhou) bal.addEventListener('click', function () { reenviar(m); });
+      if (eu && eu.papel === 'dono' && m.id && !m.pendente) {
+        bal.addEventListener('click', function (ev) {
+          if (ev.target.closest('a,button')) return;
+          var ja = bal.querySelector('.acoes');
+          if (ja) { ja.remove(); return; }
+          var ac = document.createElement('div'); ac.className = 'acoes';
+          var b1 = document.createElement('button'); b1.textContent = m.fixa ? 'Soltar' : 'Fixar'; b1.onclick = function () { http('/api/chat/fixar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: m.id, fixa: m.fixa ? 0 : 1 }) }); };
+          var b2 = document.createElement('button'); b2.textContent = 'Apagar'; b2.onclick = function () { if (confirm('Apagar esta mensagem para todos?')) http('/api/chat/apagar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: m.id }) }); };
+          ac.appendChild(b1); ac.appendChild(b2); bal.appendChild(ac);
+        });
+      }
+      linha.appendChild(bal); listaEl.appendChild(linha);
+    });
+    if (estavaNoFim || msgs.length === 0) paraOFim();
+    desenharFixas();
+  }
+
+  function desenharFixas() {
+    var fx = msgs.filter(function (m) { return m.fixa; }).slice(-3);
+    var el = $('fixas'); el.textContent = '';
+    el.hidden = !fx.length;
+    fx.forEach(function (m) {
+      var d = document.createElement('div'); d.className = 'fixa';
+      var b = document.createElement('b'); b.textContent = '📌'; d.appendChild(b);
+      var t = document.createElement('div'); t.className = 'tx'; t.appendChild(conteudo(m.texto)); d.appendChild(t);
+      el.appendChild(d);
+    });
+  }
+
+  function juntar(lista) {
+    var conhecidos = {}; msgs.forEach(function (m) { if (m.id) conhecidos[m.id] = true; });
+    var novas = 0;
+    lista.forEach(function (m) {
+      if (conhecidos[m.id]) return;
+      // a minha mensagem otimista (pendente) e substituida pela real
+      if (eu && m.pid === eu.pid) { var i = msgs.findIndex(function (x) { return x.pendente && x.texto === m.texto; }); if (i >= 0) msgs.splice(i, 1); }
+      msgs.push(m); novas++;
+      if (m.id > ultimoId) ultimoId = m.id;
+    });
+    msgs.sort(function (a, b) { return (a.id || 9e15) - (b.id || 9e15); });
+    return novas;
+  }
+
+  function avisarNovas(lista) {
+    var dosOutros = lista.filter(function (m) { return !(eu && m.pid === eu.pid); }).length;
+    if (!dosOutros) return;
+    if (document.hidden) { naoLidas += dosOutros; document.title = '(' + naoLidas + ') ' + tituloBase; try { if (navigator.vibrate) navigator.vibrate(60); } catch (e) {} }
+    else if (!noFim()) { $('novas').hidden = false; }
+  }
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) { naoLidas = 0; document.title = tituloBase; if (!ligado) ligar(); else sincronizar(); } });
+  $('novas').onclick = paraOFim;
+  listaEl.addEventListener('scroll', function () { if (noFim()) $('novas').hidden = true; });
+
+  function estado(txt, mal) { var e = $('estado'); e.hidden = !txt; e.textContent = txt || ''; e.className = mal ? 'mal' : ''; }
+  function subtitulo() {
+    var ids = Object.keys(online), n = ids.length;
+    $('pt').className = ligado ? 'on' : '';
+    $('subTxt').textContent = (ligado ? n + ' online' : 'sem ligação') + ' · ' + Object.keys(membros).length + ' pessoas';
+  }
+
+  // ---------------------------------------------------------------- ligacao em tempo real
+  function sincronizar() {
+    return http('/api/chat/msgs?depois=' + ultimoId).then(function (r) {
+      if (r.s === 401) return invalido();
+      if (r.s !== 200 || !r.j) return;
+      var novas = juntar(r.j.msgs || []);
+      if (novas) { avisarNovas(r.j.msgs || []); desenhar(); }
+      if (r.j.online) { online = {}; r.j.online.forEach(function (p) { online[p] = 1; }); subtitulo(); }
+    }).catch(function () {});
+  }
+
+  function ligar() {
+    if (fechado) return;
+    try { if (ws) ws.close(); } catch (e) {}
+    var url = API.replace(/^http/, 'ws') + '/api/chat/ws?k=' + token;
+    try { ws = new WebSocket(url); } catch (e) { retomar(); return; }
+    var w = ws;
+    w.onopen = function () { lastRx = Date.now(); tentativas = 0; ligado = true; estado(''); subtitulo(); sincronizar(); };
+    w.onmessage = function (e) {
+      lastRx = Date.now();
+      var d; try { d = JSON.parse(e.data); } catch (x) { return; }
+      if (d.t === 'ola') { online = {}; (d.online || []).forEach(function (p) { online[p] = 1; }); juntar(d.msgs || []); (d.fixas || []).forEach(function (f) { if (!msgs.some(function (m) { return m.id === f.id; })) juntar([f]); }); subtitulo(); desenhar(); }
+      else if (d.t === 'msg') { var n = juntar([d.m]); if (n) { avisarNovas([d.m]); desenhar(); if (eu && d.m.pid === eu.pid) paraOFim(); } }
+      else if (d.t === 'del') { msgs = msgs.filter(function (m) { return m.id !== d.id; }); desenhar(); }
+      else if (d.t === 'fixa') { msgs.forEach(function (m) { if (m.id === d.id) m.fixa = d.fixa; }); desenhar(); }
+      else if (d.t === 'online') { online = {}; (d.online || []).forEach(function (p) { online[p] = 1; }); subtitulo(); }
+      else if (d.t === 'erro') { var p = pendentes[d.cid]; if (p) { p.pendente = false; p.falhou = true; delete pendentes[d.cid]; desenhar(); if (d.erro === 'devagar') estado('Estás a escrever depressa demais. Espera uns segundos.', true), setTimeout(function () { estado(''); }, 4000); } }
+      else if (d.t === 'ok') { delete pendentes[d.cid]; }
+    };
+    w.onclose = function (e) {
+      if (w !== ws) return;
+      ligado = false; subtitulo();
+      if (e.code === 4001) { invalido(); return; }
+      retomar();
+    };
+    w.onerror = function () {};
+  }
+  function retomar() {
+    if (fechado) return;
+    tentativas++;
+    estado('Sem ligação — a tentar outra vez…', true);
+    setTimeout(function () { if (!document.hidden || tentativas < 3) ligar(); }, Math.min(15000, 600 * Math.pow(1.7, tentativas)));
+    sincronizar();                 // enquanto nao liga, vai buscando por HTTP
+  }
+  // ligacao meio-morta (mudou de rede, tunel, ecra bloqueado): se nao chega nada nem o pong, corta-se e volta-se a ligar
+  function cortar() {
+    var w = ws; ws = null; ligado = false; subtitulo();
+    try { if (w) w.close(); } catch (e) {}
+    retomar();
+  }
+  setInterval(function () {
+    if (fechado) return;
+    if (ws && ws.readyState === 1) {
+      if (Date.now() - lastRx > HB * 2.7) { cortar(); return; }
+      try { ws.send('{"t":"ping"}'); } catch (e) { cortar(); }
+    } else if (!document.hidden) sincronizar();
+  }, HB);
+  addEventListener('online', function () { if (!fechado && !(ws && ws.readyState === 1)) { tentativas = 0; ligar(); } });
+  addEventListener('offline', function () { if (ws && ws.readyState === 1) cortar(); });
+
+  function invalido() {
+    fechado = true; try { if (ws) ws.close(); } catch (e) {}
+    try { localStorage.removeItem(KEY); } catch (e) {}
+    cartao('Este link já não é válido', 'O chat foi fechado, o prazo acabou ou foste retirado da sala. Pede um link novo à régie.', true);
+  }
+
+  // ---------------------------------------------------------------- enviar
+  function enviarTexto(texto, aviso, m) {
+    var cid = 'c' + (++cidN) + Date.now();
+    m.cid = cid; pendentes[cid] = m;
+    if (ws && ws.readyState === 1) { try { ws.send(JSON.stringify({ t: 'msg', texto: texto, aviso: aviso, cid: cid })); return; } catch (e) {} }
+    http('/api/chat/enviar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texto: texto, aviso: aviso }) }).then(function (r) {
+      delete pendentes[cid];
+      if (r.s === 401) return invalido();
+      if (r.s === 200 && r.j && r.j.m) { juntar([r.j.m]); desenhar(); paraOFim(); }
+      else { m.pendente = false; m.falhou = true; desenhar(); }
+    }).catch(function () { delete pendentes[cid]; m.pendente = false; m.falhou = true; desenhar(); });
+  }
+  function enviar() {
+    var t = $('texto').value.trim();
+    if (!t.trim()) return;
+    var aviso = modoAviso && eu && eu.papel === 'dono';
+    var m = { id: 0, pid: eu.pid, nome: eu.nome, texto: t, ts: Date.now(), aviso: aviso ? 1 : 0, fixa: 0, pendente: true };
+    msgs.push(m); $('texto').value = ''; cresce(); desenhar(); paraOFim();
+    enviarTexto(t, aviso, m);
+    if (aviso) { modoAviso = false; $('modoAviso').setAttribute('aria-pressed', 'false'); }
+  }
+  function reenviar(m) { m.falhou = false; m.pendente = true; desenhar(); enviarTexto(m.texto, !!m.aviso, m); }
+  $('enviar').onclick = enviar;
+  $('texto').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(hover: hover)').matches) { e.preventDefault(); enviar(); }
+  });
+  function cresce() { var t = $('texto'); t.style.height = 'auto'; t.style.height = Math.min(140, t.scrollHeight) + 'px'; }
+  $('texto').addEventListener('input', cresce);
+  $('modoAviso').onclick = function () { modoAviso = !modoAviso; this.setAttribute('aria-pressed', String(modoAviso)); $('texto').focus(); };
+
+  // ---------------------------------------------------------------- pessoas
+  $('btPessoas').onclick = function () {
+    var box = $('pessoas'); box.textContent = '';
+    Object.keys(membros).sort(function (a, b) { return (online[b] ? 1 : 0) - (online[a] ? 1 : 0) || membros[a].nome.localeCompare(membros[b].nome, 'pt'); }).forEach(function (pid) {
+      var m = membros[pid], d = document.createElement('div'); d.className = 'pessoa';
+      var av = document.createElement('div'); av.className = 'av'; av.style.background = cor(pid); av.textContent = iniciais(m.nome); d.appendChild(av);
+      var n = document.createElement('div'); n.className = 'n'; n.textContent = m.nome + (pid === 'dono' ? ' (régie)' : '') + (eu && pid === eu.pid ? ' · tu' : '');
+      if (m.grupo) { var s = document.createElement('small'); s.textContent = m.grupo; n.appendChild(s); }
+      d.appendChild(n);
+      var p = document.createElement('div'); p.className = 'pt' + (online[pid] ? ' on' : ''); p.title = online[pid] ? 'online' : 'offline'; d.appendChild(p);
+      box.appendChild(d);
+    });
+    $('folhaTit').textContent = Object.keys(membros).length + ' pessoas · ' + Object.keys(online).length + ' online';
+    $('folha').hidden = false;
+  };
+  $('fechaFolha').onclick = function () { $('folha').hidden = true; };
+  $('folha').addEventListener('click', function (e) { if (e.target === $('folha')) $('folha').hidden = true; });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') $('folha').hidden = true; });
+
+  // ---------------------------------------------------------------- arranque
+  http('/api/chat/sala').then(function (r) {
+    if (r.s === 401 || r.s === 404) return invalido();
+    if (r.s !== 200 || !r.j) { cartao('Não consegui abrir o chat', 'Verifica a ligação à internet e tenta outra vez.', true); setTimeout(function () { location.reload(); }, 8000); return; }
+    var s = r.j;
+    eu = s.eu;
+    s.membros.forEach(function (m) { membros[m.pid] = m; });
+    document.title = (tituloBase = s.evento + ' · Chat');
+    $('evento').textContent = s.evento;
+    $('cartao').hidden = true; $('app').hidden = false;
+    $('modoAviso').hidden = eu.papel !== 'dono';
+    juntar(s.msgs || []);
+    online = {}; (s.online || []).forEach(function (p) { online[p] = 1; });
+    desenhar(); subtitulo(); paraOFim();
+    ligar();
+  }).catch(function () { cartao('Sem ligação', 'Não consegui contactar o servidor. A tentar outra vez…'); setTimeout(function () { location.reload(); }, 6000); });
+})();
+</script>
+</body>
+</html>

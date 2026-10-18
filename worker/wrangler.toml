@@ -15,3 +15,12 @@ crons = ["0 6,11,16,19 * * *"]
 [[kv_namespaces]]
 binding = "FOTOS"
 id = "aadf3fa50b5d40e1925491038a985831"
+
+# Chat por evento: uma sala (Durable Object com SQLite) por evento
+[[durable_objects.bindings]]
+name = "CHAT"
+class_name = "SalaChat"
+
+[[migrations]]
+tag = "v1-chat"
+new_sqlite_classes = ["SalaChat"]

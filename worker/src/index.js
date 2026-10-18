@@ -8,6 +8,8 @@
 import { parseEscala } from './parse.js';
 import { handleSala, loadDoc, publicView } from './salas.js';
 import { serveDl } from './folha.js';
+import { handleChat, handleChatAdmin } from './chat.js';
+export { SalaChat } from './chat.js';
 
 const BASE = 'http://7eventos.avk.pt/7Eventos';
 // A escala so e lida do 7Eventos pelo cron (poucas vezes ao dia), pela primeira pessoa
@@ -101,7 +103,7 @@ function cors(req, env) {
   const allowed = (env.ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
   return {
     'Access-Control-Allow-Origin': allowed.includes(origin) ? origin : allowed[0] || '*',
-    'Access-Control-Allow-Headers': 'X-PIN, Content-Type',
+    'Access-Control-Allow-Headers': 'X-PIN, X-Chat, Content-Type',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin',
@@ -206,6 +208,11 @@ async function handleStatus(req, env, h) {
 async function handleAdmin(url, req, env, h, myRole) {
   const myRank = RANK[myRole] ?? 0;
   // equipa por sala/funcao: so o dono edita (admins aprovados por email ficam de fora)
+  // chat por evento: so o dono cria/fecha salas e emite os links pessoais
+  if (url.pathname.startsWith('/api/admin/chat')) {
+    if (myRole !== 'owner') return json({ error: 'so o dono' }, 403, h);
+    return handleChatAdmin(url, req, env, h, { json, readJson });
+  }
   if (url.pathname.startsWith('/api/admin/sala')) {
     if (myRole !== 'owner') return json({ error: 'so o dono' }, 403, h);
     return handleSala(url, req, env, h, { json, readJson, todayDMY, projectView });
@@ -375,6 +382,9 @@ export default {
       // ficheiros temporarios (exportar/imprimir): o proprio token e o segredo, nao precisam de PIN
       const dl = url.pathname.match(/^\/dl\/([a-f0-9]{32})$/);
       if (dl && req.method === 'GET') return serveDl(env, dl[1], h);
+
+      // chat: o proprio link pessoal (token) e a credencial, nao ha PIN
+      if (url.pathname.startsWith('/api/chat/')) return await handleChat(url, req, env, h, { json, readJson });
 
       if (req.method !== 'GET' && !url.pathname.startsWith('/api/admin/')) return json({ error: 'metodo' }, 405, h);
 

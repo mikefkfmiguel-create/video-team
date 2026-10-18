@@ -518,13 +518,21 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
     var h = '<div class="sh-h" style="--h:' + hue(e.code) + '"><h3>' + esc(e.event || 'OS ' + e.code) + '</h3><p>OS ' + esc(e.osFull) + '</p></div><dl>' +
       (e.client ? '<dt>Cliente / local</dt><dd>' + esc(e.client) + '</dd>' : '') +
       (e.hor ? '<dt>Horário</dt><dd>' + esc(e.hor) + '</dd>' : '') +
-      '</dl>' + pdfButton(e) + shareButton(e) + salasButton(e) + '<dl><dt>Equipa neste período</dt></dl><ul class="crewlist">';
+      '</dl>' + pdfButton(e) + shareButton(e) + salasButton(e) + chatButton(e) + '<dl><dt>Equipa neste período</dt></dl><ul class="crewlist">';
     list.forEach(function (c) {
       h += '<li>' + avatar(c.p, 30) + '<div><b>' + esc(c.p.name) + '</b><small>' + esc(c.p.grupo) + ' · ' + esc(ranges(c.days)) + '</small></div></li>';
     });
     openSheet(h + '</ul>');
     var sb = document.getElementById('shareBtn');
     if (sb) sb.onclick = function () { shareProject(e, sb); };
+    var chb = document.getElementById('chatBtn');
+    if (chb) chb.onclick = function () {
+      document.getElementById('sheet').classList.remove('open');
+      window.__vtChat.abrir({
+        api: cfg.api, pin: cfg.pin, sig: sig(e), titulo: e.event || ('OS ' + e.code),
+        crew: list.map(function (c) { return { id: c.p.id, name: c.p.name, grupo: c.p.grupo, days: c.days }; })
+      });
+    };
     var slb = document.getElementById('salasBtn');
     if (slb) slb.onclick = function () {
       var ctxSalas = function (pin) {
@@ -561,6 +569,12 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
         cb(pin);
       }).catch(function () { err.textContent = 'Sem ligação ao servidor.'; });
     };
+  }
+
+  // botao "Chat do evento": so o dono, so na versao web (fala com o Worker), so quando o modulo do chat esta carregado
+  function chatButton(e) {
+    if (!(cfg.api && cfg.role === 'owner') || !window.__vtChat || e.kind === 'inc') return '';
+    return '<button class="pdf share" id="chatBtn"><span>CHAT</span>Chat do evento com a equipa</button>';
   }
 
   // botao "Equipa por sala": so o dono (chave fixa), so quando o editor esta carregado
