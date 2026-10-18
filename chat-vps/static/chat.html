@@ -492,10 +492,13 @@
   });
   function cresce() {
     var t = $('texto'), max = Math.max(110, Math.round(innerHeight * 0.3));
-    if (!t.value) { t.style.height = ''; $('expandir').hidden = true; return; }
+    if (!t.value) { t.style.height = ''; $('expandir').hidden = true; edAuto = false; return; }
     t.style.height = 'auto'; t.style.height = Math.min(max, t.scrollHeight) + 'px';
-    $('expandir').hidden = !(t.scrollHeight > max - 4 || t.value.split(String.fromCharCode(10)).length >= 4);      // texto comprido: oferece o ecra inteiro
+    var comprido = t.scrollHeight > max - 4 || t.value.split(String.fromCharCode(10)).length >= 4;
+    $('expandir').hidden = !comprido;      // texto comprido: oferece o ecra inteiro...
+    if (comprido && !edAuto && $('editor').hidden && document.activeElement === t) { edAuto = true; abrirEditor(); }      // ...e abre-o sozinho (uma vez por mensagem; se fechares com «←» nao volta a saltar)
   }
+  var edAuto = false;
   function encolher() { document.querySelector('footer').classList.toggle('escreve', document.activeElement === $('texto') || !!$('texto').value); }
   $('texto').addEventListener('focus', encolher); $('texto').addEventListener('blur', encolher); $('texto').addEventListener('input', encolher);
   // escrever em ecra inteiro (para textos compridos)
