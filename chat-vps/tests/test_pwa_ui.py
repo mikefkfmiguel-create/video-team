@@ -115,7 +115,7 @@ try:
         cx = r390.evaluate("""(() => { const t = document.getElementById('texto'); const b = t.getBoundingClientRect();
           const c = document.createElement('canvas').getContext('2d'); const cs = getComputedStyle(t); c.font = cs.fontSize + ' ' + cs.fontFamily;
           return { w: b.width, h: b.height, txt: c.measureText(t.placeholder).width, pad: parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) }; })()""")
-        ok(cx['h'] <= 48 and cx['w'] - cx['pad'] >= cx['txt'], 'no telemovel a caixa mostra «Escreve uma mensagem» numa so linha (caixa %dpx, texto %dpx)' % (cx['w'] - cx['pad'], cx['txt']))
+        ok(cx['h'] <= 48 and cx['w'] - cx['pad'] >= cx['txt'], 'no telemovel a caixa mostra o texto de ajuda numa so linha (caixa %dpx, texto %dpx)' % (cx['w'] - cx['pad'], cx['txt']))
         if SHOT:
             r390.screenshot(path=os.path.join(SHOT, 'pwa-regie-telemovel.png'))
         t390.close()
@@ -139,6 +139,7 @@ try:
         ana.fill('#texto', 'Chego às 8h, entrada B https://exemplo.pt/mapa')
         ana.click('#enviar')
         ana.wait_for_selector('.linha.eu .bal:not(.pend)', timeout=8000)
+        ok(ana.evaluate("document.getElementById('texto').getBoundingClientRect().height") <= 50, 'depois de enviar, a caixa de escrever volta a ter uma linha (nao fica gigante por causa do texto de ajuda)')
         regie.wait_for_selector('.linha:not(.eu) .txt', timeout=8000)
         ok('Chego às 8h' in regie.inner_text('#lista') and regie.locator(".txt a[href='https://exemplo.pt/mapa']").count() == 1, 'a regie ve a mensagem em tempo real, com o link clicavel')
         regie.fill('#texto', '<img src=x onerror=alert(1)> ok')

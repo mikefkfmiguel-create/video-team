@@ -149,7 +149,7 @@
     <button id="modoAviso" aria-pressed="false" aria-label="Fixar a próxima mensagem" hidden title="Fixar: a mensagem seguinte fica fixa no topo, para todos">📌</button>
     <button id="camara" type="button" aria-label="Enviar uma foto" title="Enviar uma foto" hidden>📷</button>
     <input type="file" id="ficheiroFoto" accept="image/*" hidden>
-    <textarea id="texto" rows="1" placeholder="Escreve uma mensagem" maxlength="2000" enterkeyhint="send" aria-label="Mensagem"></textarea>
+    <textarea id="texto" rows="1" placeholder="Mensagem" maxlength="2000" enterkeyhint="send" aria-label="Mensagem"></textarea>
     <button id="enviar" aria-label="Enviar">➤</button>
   </footer>
 </div>
@@ -462,16 +462,16 @@
     var m = { id: 0, pid: eu.pid, nome: eu.nome, texto: t, ts: Date.now(), aviso: aviso ? 1 : 0, fixa: 0, pendente: true };
     msgs.push(m); $('texto').value = ''; cresce(); desenhar(); paraOFim();
     enviarTexto(t, aviso, m);
-    if (aviso) { modoAviso = false; $('modoAviso').setAttribute('aria-pressed', 'false'); $('texto').placeholder = 'Escreve uma mensagem'; }
+    if (aviso) { modoAviso = false; $('modoAviso').setAttribute('aria-pressed', 'false'); $('texto').placeholder = 'Mensagem'; }
   }
   function reenviar(m) { if (m.ehFoto) { msgs = msgs.filter(function (x) { return x !== m; }); desenhar(); return; } m.falhou = false; m.pendente = true; desenhar(); enviarTexto(m.texto, !!m.aviso, m); }
   $('enviar').onclick = enviar;
   $('texto').addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(hover: hover)').matches) { e.preventDefault(); enviar(); }
   });
-  function cresce() { var t = $('texto'); t.style.height = 'auto'; t.style.height = Math.min(140, t.scrollHeight) + 'px'; }
+  function cresce() { var t = $('texto'); if (!t.value) { t.style.height = ''; return; } t.style.height = 'auto'; t.style.height = Math.min(140, t.scrollHeight) + 'px'; }      // vazia: altura de uma linha (o texto de ajuda nao conta)
   $('texto').addEventListener('input', cresce);
-  $('modoAviso').onclick = function () { modoAviso = !modoAviso; this.setAttribute('aria-pressed', String(modoAviso)); $('texto').placeholder = modoAviso ? 'Esta mensagem fica fixa no topo' : 'Escreve uma mensagem'; $('texto').focus(); };
+  $('modoAviso').onclick = function () { modoAviso = !modoAviso; this.setAttribute('aria-pressed', String(modoAviso)); $('texto').placeholder = modoAviso ? 'Fica fixa no topo' : 'Mensagem'; $('texto').focus(); };
 
   // ---------------------------------------------------------------- fotos
   // A foto e reduzida AQUI, no telemovel (1600 px, JPEG): ~0,3 MB em vez de varios MB, e o reencode apaga a localizacao (EXIF).
@@ -540,7 +540,7 @@
   // so leitura: le tudo mas nao escreve. Aplica-se ao entrar e sempre que o dono muda o tipo de alguem.
   function bloquear() {
     var ro = !!(eu && eu.tipo === 'leitura');
-    $('texto').disabled = ro; $('texto').placeholder = ro ? 'Só podes ler este chat' : 'Escreve uma mensagem';
+    $('texto').disabled = ro; $('texto').placeholder = ro ? 'Só podes ler este chat' : 'Mensagem';
     $('enviar').hidden = ro;
     $('camara').hidden = ro;
     $('modoAviso').hidden = !(eu && eu.gere);
