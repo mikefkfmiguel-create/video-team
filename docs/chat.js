@@ -143,7 +143,7 @@
     '#vtch .top small{display:block;font-weight:400;color:var(--mut);font-size:12px}',
     '#vtch .x{width:34px;height:34px;border:0;border-radius:9px;background:var(--soft);font-size:16px}',
     '#vtch .corpo{flex:1;overflow:auto;padding:12px 14px 90px;max-width:760px;width:100%;margin:0 auto}',
-    '#vtch .b{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:34px;padding:0 12px;border:1px solid var(--line);border-radius:9px;background:var(--panel);text-decoration:none;white-space:nowrap}',
+    '#vtch .b{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:34px;padding:6px 12px;box-sizing:border-box;max-width:100%;text-align:center;border:1px solid var(--line);border-radius:9px;background:var(--panel);text-decoration:none;white-space:normal}',
     '#vtch .b:hover{background:var(--soft)}#vtch .b:disabled{opacity:.45;cursor:default}',
     '#vtch .pri{background:linear-gradient(135deg,#1246E6,var(--acc));color:#fff;border:0}#vtch .pri:hover{background:linear-gradient(135deg,#1246E6,var(--acc))}',
     '#vtch .wa{background:#1fa855;color:#fff;border:0}#vtch .wa:hover{background:#198f48}',
@@ -162,7 +162,7 @@
     '#vtch input[type=text],#vtch input[type=tel],#vtch input[type=email],#vtch textarea,#vtch select{border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);padding:7px 10px;font:inherit;max-width:100%}',
     '#vtch textarea{width:100%;min-height:96px;resize:vertical}',
     '#vtch .edita{display:flex;gap:6px;width:100%;margin:2px 0 4px 44px;flex-wrap:wrap}',
-    '#vtch .rodape{position:sticky;bottom:0;display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:10px 0 0;background:linear-gradient(transparent,var(--bg) 30%)}',
+    '#vtch .rodape{position:sticky;bottom:0;display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:0 -14px;padding:10px 14px max(10px,env(safe-area-inset-bottom));background:var(--bg);border-top:1px solid var(--line)}',
     '#vtch .erro{color:#d6334b;font-size:13px;margin:6px 0}',
     '#vtch .spin{width:26px;height:26px;border:3px solid var(--line);border-top-color:var(--acc);border-radius:50%;margin:50px auto;animation:vtchsp .8s linear infinite}@keyframes vtchsp{to{transform:rotate(360deg)}}'
   ].join('\n');
