@@ -64,6 +64,20 @@
   .bal .foto img { display: block; width: 100%; height: 100%; object-fit: cover; }
   #camara { flex: none; width: 44px; height: 44px; border: 0; border-radius: 50%; background: var(--line); color: inherit; font-size: 20px; cursor: pointer; }
   #camara:disabled { opacity: .45; }
+  /* a escrever: os icones encolhem para a caixa ter mais largura */
+  footer.escreve #camara, footer.escreve #modoAviso { width: 36px; height: 36px; font-size: 16px; }
+  #expandir { flex: none; width: 36px; height: 36px; border: 0; border-radius: 50%; background: var(--line); color: inherit; font-size: 17px; line-height: 1; cursor: pointer; }
+  #expandir[hidden] { display: none; }
+  #editor { position: fixed; inset: 0; z-index: 40; background: var(--bg); display: flex; flex-direction: column; width: min(100%, 720px); margin: 0 auto; padding-top: env(safe-area-inset-top); }
+  #editor[hidden] { display: none; }
+  #editor .eb { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  #editor .eb b { flex: 1; font-size: 16px; }
+  #editor .eb button { flex: none; width: 44px; height: 44px; border: 0; border-radius: 50%; background: var(--line); color: inherit; font-size: 20px; cursor: pointer; }
+  #editor .eb #edEnviar { background: linear-gradient(135deg, var(--acc2), var(--acc)); color: #fff; font-size: 19px; }
+  #editor .eb #edFixar { background: var(--aviso); border: 1px solid var(--aviso-line); }
+  #editor .eb #edFixar[aria-pressed=true] { background: #f5b800; box-shadow: 0 0 0 3px rgba(245,184,0,.35); }
+  #editor textarea { flex: 1; min-height: 0; width: 100%; resize: none; border: 0; outline: 0; padding: 14px 16px; background: var(--bg); color: var(--ink); font: inherit; font-size: 17px; line-height: 1.4; }
+  #editor .ec { flex: none; text-align: right; padding: 4px 16px max(8px, env(safe-area-inset-bottom)); font-size: 12px; color: var(--mut); border-top: 1px solid var(--line); }
   #grande { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.92); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
   #grande[hidden] { display: none; }
   #grande img { max-width: 100%; max-height: calc(100% - 70px); object-fit: contain; }
@@ -150,8 +164,15 @@
     <button id="camara" type="button" aria-label="Enviar uma foto" title="Enviar uma foto" hidden>📷</button>
     <input type="file" id="ficheiroFoto" accept="image/*" hidden>
     <textarea id="texto" rows="1" placeholder="Mensagem" maxlength="2000" enterkeyhint="send" aria-label="Mensagem"></textarea>
+    <button id="expandir" type="button" aria-label="Escrever em ecrã inteiro" title="Escrever em ecrã inteiro" hidden>⤢</button>
     <button id="enviar" aria-label="Enviar">➤</button>
   </footer>
+</div>
+
+<div id="editor" hidden role="dialog" aria-modal="true" aria-label="Escrever mensagem">
+  <div class="eb"><button id="edFecha" type="button" aria-label="Voltar">←</button><b>Mensagem</b><button id="edFixar" type="button" aria-pressed="false" aria-label="Fixar a próxima mensagem" hidden>📌</button><button id="edEnviar" type="button" aria-label="Enviar">➤</button></div>
+  <textarea id="textoGrande" maxlength="2000" placeholder="Escreve a tua mensagem" aria-label="Mensagem"></textarea>
+  <div class="ec" id="edConta">0 / 2000</div>
 </div>
 
 <div id="grande" hidden role="dialog" aria-modal="true" aria-label="Foto"><button id="fechaGrande" aria-label="Fechar">✕</button><img id="grandeImg" alt=""><div class="leg" id="grandeLeg"></div></div>
@@ -439,7 +460,7 @@
   function invalido() {
     fechado = true; try { if (ws) ws.close(); } catch (e) {}
     try { localStorage.removeItem(KEY); } catch (e) {}
-    msgs = []; membros = {}; try { listaEl.textContent = ''; $('fixas').textContent = ''; $('pessoas').textContent = ''; $('app').hidden = true; $('folha').hidden = true; $('grande').hidden = true; $('grandeImg').removeAttribute('src'); } catch (e) {}      // nada da conversa fica no ecra
+    msgs = []; membros = {}; try { listaEl.textContent = ''; $('fixas').textContent = ''; $('pessoas').textContent = ''; $('app').hidden = true; $('folha').hidden = true; $('editor').hidden = true; $('grande').hidden = true; $('grandeImg').removeAttribute('src'); } catch (e) {}      // nada da conversa fica no ecra
     cartao('Este link já não é válido', 'O chat foi fechado, o prazo acabou ou foste retirado da sala. Pede um link novo à régie.', true);
   }
 
@@ -469,7 +490,28 @@
   $('texto').addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(hover: hover)').matches) { e.preventDefault(); enviar(); }
   });
-  function cresce() { var t = $('texto'); if (!t.value) { t.style.height = ''; return; } t.style.height = 'auto'; t.style.height = Math.min(140, t.scrollHeight) + 'px'; }      // vazia: altura de uma linha (o texto de ajuda nao conta)
+  function cresce() {
+    var t = $('texto'), max = Math.max(110, Math.round(innerHeight * 0.3));
+    if (!t.value) { t.style.height = ''; $('expandir').hidden = true; return; }
+    t.style.height = 'auto'; t.style.height = Math.min(max, t.scrollHeight) + 'px';
+    $('expandir').hidden = !(t.scrollHeight > max - 4 || t.value.split(String.fromCharCode(10)).length >= 4);      // texto comprido: oferece o ecra inteiro
+  }
+  function encolher() { document.querySelector('footer').classList.toggle('escreve', document.activeElement === $('texto') || !!$('texto').value); }
+  $('texto').addEventListener('focus', encolher); $('texto').addEventListener('blur', encolher); $('texto').addEventListener('input', encolher);
+  // escrever em ecra inteiro (para textos compridos)
+  function contarEd() { $('edConta').textContent = $('textoGrande').value.length + ' / 2000'; }
+  function abrirEditor() {
+    $('textoGrande').value = $('texto').value; contarEd();
+    $('edFixar').hidden = !(eu && eu.gere); $('edFixar').setAttribute('aria-pressed', String(modoAviso));
+    $('editor').hidden = false;
+    var t = $('textoGrande'); t.focus(); try { t.setSelectionRange(t.value.length, t.value.length); } catch (e) {}
+  }
+  function fecharEditor() { $('texto').value = $('textoGrande').value; $('editor').hidden = true; cresce(); encolher(); }
+  $('expandir').onclick = abrirEditor;
+  $('edFecha').onclick = fecharEditor;
+  $('textoGrande').addEventListener('input', contarEd);
+  $('edFixar').onclick = function () { modoAviso = !modoAviso; this.setAttribute('aria-pressed', String(modoAviso)); $('modoAviso').setAttribute('aria-pressed', String(modoAviso)); $('textoGrande').focus(); };
+  $('edEnviar').onclick = function () { $('texto').value = $('textoGrande').value; $('editor').hidden = true; enviar(); cresce(); encolher(); };      // vazia: altura de uma linha (o texto de ajuda nao conta)
   $('texto').addEventListener('input', cresce);
   $('modoAviso').onclick = function () { modoAviso = !modoAviso; this.setAttribute('aria-pressed', String(modoAviso)); $('texto').placeholder = modoAviso ? 'Fica fixa no topo' : 'Mensagem'; $('texto').focus(); };
 
