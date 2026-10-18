@@ -796,7 +796,7 @@
     '.run.os{border-left:4px solid hsl(var(--h) 60% 50%)}.run.free{background:transparent;box-shadow:none;border:1px dashed var(--line);padding:6px 12px}.run.now{outline:2px solid var(--acc);outline-offset:1px}',
     '.rw{width:170px;flex:none;font-size:12px;color:var(--mut);text-transform:capitalize}.rb{display:flex;flex-direction:column;min-width:0}.rb small{color:var(--mut);font-size:12px}',
     '@media (max-width:760px){.run{flex-direction:column;align-items:flex-start;gap:2px}.rw{width:auto}}',
-    '@media (max-width:760px){.top{padding:8px 12px}#range{display:none}.mark{position:absolute;top:12px;left:122px}.mark span{display:none}.mark .sym{width:16px;height:16px}input[type=search]{width:120px}select{max-width:150px}.grid{grid-template-columns:150px repeat(var(--n),96px)}.who .av{display:none}.who small{display:none}.dayv{padding:12px}}'
+    '@media (max-width:760px){.top{padding:8px 12px}#range{display:none}.top>.brand{order:1;margin-right:0}.top>.mark{order:2;margin-right:auto;position:static}.top>.ctl{order:3}.mark span{display:none}.mark .sym{width:16px;height:16px}input[type=search]{width:120px}select{max-width:150px}.grid{grid-template-columns:150px repeat(var(--n),96px)}.who .av{display:none}.who small{display:none}.dayv{padding:12px}}'
   ].join('\n');
 
   document.open();
