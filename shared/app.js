@@ -598,25 +598,53 @@
     return '<button class="pdf share" id="salasBtn"><span>SALAS</span>Equipa por sala e função</button>';
   }
 
-  // botao "Partilhar": so para quem gere gente (admin/full admin/dono), so na versao web
+  // botao "Partilhar": so para quem gere gente (admin/full admin/dono). Web: com a sessao; app Android/PC: com a chave/codigo do dono (pedido uma vez)
   function shareButton(e) {
-    if (!cfg.api || !cfg.role || cfg.role === 'video') return '';
-    return '<button class="pdf share" id="shareBtn"><span>LINK</span>Partilhar só este projeto</button>';
+    var ok = cfg.api ? (cfg.role && cfg.role !== 'video') : !!cfg.salasApi;
+    if (!ok) return '';
+    return '<button class="pdf share" id="shareBtn"><span>LINK</span>Link só deste evento</button>';
+  }
+
+  // copiar sem depender da API da area de transferencia (nao existe no WebView da app)
+  function copyText(tx, done) {
+    function viaExec() {
+      var ta = document.createElement('textarea'); ta.value = tx; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+      document.body.appendChild(ta); ta.select(); try { ta.setSelectionRange(0, tx.length); } catch (err) {}
+      var ok = false; try { ok = document.execCommand('copy'); } catch (err) {}
+      ta.remove(); done(ok);
+    }
+    try { if (navigator.clipboard && window.isSecureContext) { navigator.clipboard.writeText(tx).then(function () { done(true); }, viaExec); return; } } catch (err) {}
+    viaExec();
+  }
+
+  // o resultado vive no proprio painel (alert() nao existe na app Android)
+  function showShareResult(e, url) {
+    var msg = 'Escala do evento «' + (e.event || ('OS ' + e.code)) + '»: ' + url;
+    openSheet('<div class="sh-h" style="--h:' + hue(e.code) + '"><h3>Link só deste evento</h3><p>' + esc(e.event || ('OS ' + e.code)) + ' · quem o abrir só vê este evento e a sua equipa · válido 30 dias</p></div>' +
+      '<div class="mut" style="word-break:break-all;font-family:ui-monospace,Menlo,monospace;font-size:12px;margin:14px 0">' + esc(url) + '</div>' +
+      '<button class="pdf share" id="shCopy"><span>COPIAR</span>Copiar o link</button>' +
+      '<a class="pdf share" id="shWa" href="https://wa.me/?text=' + encodeURIComponent(msg) + '" target="_blank" rel="noopener" style="text-decoration:none"><span>WHATSAPP</span>Enviar para um grupo ou contacto</a>' +
+      '<button class="pdf share" id="shBack"><span>VOLTAR</span>Fechar e voltar à escala</button>');
+    document.getElementById('shCopy').onclick = function () {
+      var b = this; copyText(url, function (ok) { b.querySelector('span').textContent = ok ? 'COPIADO ✓' : 'COPIAR'; if (!ok) b.insertAdjacentHTML('afterend', '<div class="mut">Seleciona o link acima e copia-o.</div>'); });
+    };
+    document.getElementById('shBack').onclick = function () { document.getElementById('sheet').classList.remove('open'); };
   }
 
   function shareProject(e, btn) {
-    btn.disabled = true; var was = btn.innerHTML; btn.innerHTML = '<span>LINK</span>A gerar…';
-    fetch(cfg.api + '/api/admin/share', {
-      method: 'POST', headers: { 'X-PIN': cfg.pin, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key: sig(e), label: e.event || ('OS ' + e.code), d: state.dmy })
-    }).then(function (r) { return r.json(); }).then(function (j) {
-      btn.disabled = false; btn.innerHTML = was;
-      if (!j.token) { alert(j.error || 'Não consegui criar o link.'); return; }
-      var url = location.origin + location.pathname + '?p=' + j.token;
-      var copied = false;
-      try { if (navigator.clipboard) { navigator.clipboard.writeText(url); copied = true; } } catch (err) {}
-      alert((copied ? 'Link copiado (válido 30 dias):\n\n' : 'Link (válido 30 dias):\n\n') + url);
-    }).catch(function () { btn.disabled = false; btn.innerHTML = was; alert('Sem ligação ao servidor.'); });
+    var porFalar = function (pin) {
+      btn.disabled = true; var was = btn.innerHTML; btn.innerHTML = '<span>LINK</span>A gerar…';
+      fetch((cfg.api || cfg.salasApi) + '/api/admin/share', {
+        method: 'POST', headers: { 'X-PIN': pin, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: sig(e), label: e.event || ('OS ' + e.code), d: state.dmy })
+      }).then(function (r) { return r.json(); }).then(function (j) {
+        btn.disabled = false; btn.innerHTML = was;
+        if (!j.token) { if (!cfg.api) store('vt.salaspin', ''); btn.insertAdjacentHTML('afterend', '<div class="mut">' + esc(j.error || 'Não consegui criar o link.') + '</div>'); return; }
+        var base = cfg.api ? location.origin + location.pathname : (cfg.webBase || 'https://mikefkfmiguel-create.github.io/video-team/');
+        showShareResult(e, base + '?p=' + j.token);
+      }).catch(function () { btn.disabled = false; btn.innerHTML = was; btn.insertAdjacentHTML('afterend', '<div class="mut">Sem ligação ao servidor.</div>'); });
+    };
+    if (cfg.api) porFalar(cfg.pin); else withSalasPin(porFalar);
   }
 
   function pdfUrl(e) {

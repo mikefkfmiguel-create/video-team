@@ -29,6 +29,7 @@ class MainActivity : Activity() {
         const val HOST = "7eventos.avk.pt"
         const val START = "http://$HOST/7Eventos/EscalasTecnicos/GetPeriodoJS"
         const val SALAS_API = "https://video-team.avkvideoshare.workers.dev"
+        const val WEB_BASE = "https://mikefkfmiguel-create.github.io/video-team/"      // onde abrem os links de evento (?p=...)
         const val PEDIDO_CONTACTOS = 4242
         const val MAX_CONTACTOS = 3000
         const val MAX_BUSCA = 40
@@ -116,7 +117,7 @@ class MainActivity : Activity() {
             }
             url.startsWith(START) -> {
                 loginAttempts = 0
-                val cfg = JSONObject().put("search", BuildConfig.VT_SEARCH).put("salasApi", SALAS_API)
+                val cfg = JSONObject().put("search", BuildConfig.VT_SEARCH).put("salasApi", SALAS_API).put("webBase", WEB_BASE)
                 web.evaluateJavascript(salasJs, null)
                 web.evaluateJavascript("($appJs)($cfg)", null)
             }
@@ -232,7 +233,7 @@ class MainActivity : Activity() {
     override fun onBackPressed() {
         // fecha o painel de detalhe se estiver aberto, senao sai
         web.evaluateJavascript(
-            "(function(){var s=document.getElementById('sheet');if(s&&s.classList.contains('open')){s.classList.remove('open');return 1}return 0})()"
+            "(function(){var c=document.getElementById('vtch');if(c){var x=c.querySelector('[data-acao=sair]');if(x){x.click();return 1}}var s=document.getElementById('sheet');if(s&&s.classList.contains('open')){s.classList.remove('open');return 1}return 0})()"
         ) { r -> if (r != "1") runOnUiThread { @Suppress("DEPRECATION") super.onBackPressed() } }
     }
 }
