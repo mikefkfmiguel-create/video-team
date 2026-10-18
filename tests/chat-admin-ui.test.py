@@ -56,10 +56,10 @@ PAGINA = """<!doctype html><html lang="pt"><head><meta charset="utf-8"><meta nam
 </head><body><button id="abre">abrir</button><script src="chat.js"></script>
 <script>
 var CREW = [
-  {id:'1', name:'Ana Silva', grupo:'Técnicos de Vídeo', days:['2026-10-21','2026-10-22'], filtrado:true},
+  {id:'1', name:'Ana Silva*_10H', grupo:'Técnicos de Vídeo', days:['2026-10-21','2026-10-22'], filtrado:true},
   {id:'2', name:'Rui Costa', grupo:'Técnicos de Vídeo', days:['2026-10-21','2026-10-22'], filtrado:true},
   {id:'3', name:'Marta Lopes', grupo:'Técnicos de Vídeo', days:['2026-10-22'], filtrado:true},
-  {id:'4', name:'Hugo Dias', grupo:'Técnicos de Luz', days:['2026-10-21'], filtrado:false}
+  {id:'4', name:'Hugo Dias_12H', grupo:'Técnicos de Luz', days:['2026-10-21'], filtrado:false}
 ];
 document.getElementById('abre').onclick = function () {
   window.__vtChat.abrir({ api: '%API%', pin: 'dono-teste', sig: '%SIG%', titulo: 'Portugal Digital Summit', filtroTxt: 'Técnicos de Vídeo', crew: CREW });
@@ -134,6 +134,11 @@ try:
         ok(pag.locator("#vtch .linha").count() == 3 and "Novo chat" in pag.inner_text("#vtch .top"), "novo chat: so as 3 pessoas do filtro do Video Team, todas marcadas")
         ok("Só as 3 pessoas do filtro" in pag.inner_text("#vtch") and "Técnicos de Vídeo" in pag.inner_text("#vtch") and "Hugo" not in pag.inner_text("#vtch"), "diz que e so o filtro e o Hugo (fora do filtro) nao aparece")
         ok(pag.locator("#vtch .tag.aviso").count() == 3, "ainda sem contactos: «sem contacto» em todas")
+        ok("_10H" not in pag.inner_text("#vtch") and "*" not in pag.inner_text("#vtch .nm"), "os sufixos do 7Eventos (_10H, *) nao aparecem nos nomes")
+        pag.click("[data-acao=marcaNenhuma]")
+        ok(pag.locator("#vtch input[type=checkbox]:checked").count() == 0 and "0 pessoa" in pag.inner_text(".rodape"), "«Desmarcar todas»")
+        pag.click("[data-acao=marcaTodas]")
+        ok(pag.locator("#vtch input[type=checkbox]:checked").count() == 3, "«Marcar todas» (so as visiveis do filtro)")
         pag.click("[data-acao=todos]")
         ok(pag.locator("#vtch .linha").count() == 4 and not pag.locator("#vtch-s4").is_checked(), "«Mostrar toda a equipa»: o Hugo aparece mas desmarcado")
         pag.click("[data-acao=todos]")

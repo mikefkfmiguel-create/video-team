@@ -21,6 +21,7 @@
   function hue(s) { var h = 0; s = String(s); for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h % 360; }
 
   // ---------------------------------------------------------------- contactos: ler, normalizar, casar com a equipa
+  function limpaNome(n) { return String(n || '').replace(/\s*[_*].*$/, '').replace(/\s+/g, ' ').trim() || String(n || '').trim(); }
   function chave(n) { return String(n || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim(); }
 
   // +351…, 00351…, 9xxxxxxxx (Portugal por omissao) -> so digitos com indicativo, para o wa.me
@@ -128,6 +129,7 @@
     '#vtch .caixa{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}',
     '#vtch .caixa h4{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}',
     '#vtch .linha{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line);flex-wrap:wrap}#vtch .linha:first-of-type{border-top:0}',
+    '#vtch .linha.compacta{flex-wrap:nowrap;gap:8px}#vtch .linha.compacta .nm{min-width:0}#vtch .linha.compacta .nm label{display:block;overflow:hidden;text-overflow:ellipsis}#vtch .linha.compacta .bt{display:flex;gap:6px;flex:none}#vtch .linha.compacta .b{padding:0 9px}#vtch .linha.compacta input[type=checkbox]{width:20px;height:20px;flex:none}#vtch .linha.compacta select{max-width:100%}',
     '#vtch .av{flex:none;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:12px;font-weight:700}',
     '#vtch .nm{flex:1;min-width:140px}#vtch .nm small{display:block;color:var(--mut);font-size:12px}',
     '#vtch .ac{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}',
@@ -187,7 +189,7 @@
     var st = document.createElement('style'); st.id = 'vtch-css'; st.textContent = CSS; document.head.appendChild(st);
     var el = document.createElement('div'); el.id = 'vtch'; document.body.appendChild(el);
 
-    var crew = (ctx.crew || []).slice().sort(function (a, b) { return a.name.localeCompare(b.name, 'pt'); });
+    var crew = (ctx.crew || []).map(function (c) { return { id: c.id, name: limpaNome(c.name), grupo: c.grupo, days: c.days, filtrado: c.filtrado }; }).sort(function (a, b) { return a.name.localeCompare(b.name, 'pt'); });
     var ultimoDia = '';
     crew.forEach(function (c) { (c.days || []).forEach(function (d) { if (d > ultimoDia) ultimoDia = d; }); });
     var temFiltro = crew.some(function (c) { return c.filtrado; }) && crew.some(function (c) { return !c.filtrado; });
@@ -245,10 +247,11 @@
         'Cada uma recebe o seu link pessoal e fica a ver e a escrever neste chat do evento.</div>';
       vis.forEach(function (p) {
         var c = eu(p); if (S.sel[p.id] && c.t) comTel++;
-        h += '<div class="linha"><input type="checkbox" data-acao="sel" data-id="' + esc(p.id) + '" id="vtch-s' + esc(p.id) + '"' + (S.sel[p.id] ? ' checked' : '') + ' aria-label="' + esc(p.name) + '">' + avatar(p.name, p.id) +
-          '<label class="nm" for="vtch-s' + esc(p.id) + '">' + esc(p.name) + '<small>' + esc(p.grupo || '') + '</small></label>' + chipContacto(p, c) +
-          botaoContacto(p) + '</div>' + (S.edita === p.id ? linhaEditar(p) : '');
+        h += '<div class="linha compacta"><input type="checkbox" data-acao="sel" data-id="' + esc(p.id) + '" id="vtch-s' + esc(p.id) + '"' + (S.sel[p.id] ? ' checked' : '') + ' aria-label="' + esc(p.name) + '">' + avatar(p.name, p.id) +
+          '<div class="nm"><label for="vtch-s' + esc(p.id) + '">' + esc(p.name) + '</label><small>' + esc(p.grupo || '') + '</small><div style="margin-top:3px">' + chipContacto(p, c) + '</div></div>' +
+          '<div class="bt">' + botaoContacto(p) + '</div></div>' + (S.edita === p.id ? linhaEditar(p) : '');
       });
+      h += '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><button class="b" data-acao="marcaTodas">Marcar todas</button><button class="b" data-acao="marcaNenhuma">Desmarcar todas</button></div>';
       if (temFiltro) h += '<div style="margin-top:8px"><button class="b" data-acao="todos">' + (S.todos ? 'Mostrar só o filtro' : 'Mostrar toda a equipa do evento (+' + (crew.length - crew.filter(function (c) { return c.filtrado; }).length) + ')') + '</button></div>';
       h += '</div>' + caixaContactos();
       h += '<div class="caixa"><h4>O teu nome no chat</h4><input type="text" id="vtch-nome" maxlength="40" value="' + esc(S.nome) + '"><div class="nota">Aparece como «régie» ao lado do nome.</div></div>';
@@ -258,8 +261,8 @@
     }
 
     function caixaContactos() {
-      return '<div class="caixa"><h4>Contactos</h4><div class="nota">Os números ficam só neste aparelho. ' + (PICKER ? 'No telemóvel, escolhe só os contactos da equipa (ou usa o 📇 em cada pessoa). ' : 'No iPhone ou no computador não há acesso direto aos contactos: ') + 'Em contacts.google.com: <b>Exportar → Google CSV</b>, e importa o ficheiro aqui (também serve um .vcf).</div>' +
-        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="b pri" data-acao="google">Importar do Google Contactos</button>' + (PICKER ? '<button class="b" data-acao="pickVarios">Escolher contactos no telemóvel</button>' : '') + '<button class="b" data-acao="importar">Importar ficheiro (.csv / .vcf)</button><input type="file" id="vtch-fich" accept=".csv,.vcf,text/csv,text/vcard,text/x-vcard" hidden>' +
+      return '<div class="caixa"><h4>Contactos</h4><div class="nota">Os números ficam só neste aparelho. ' + (PICKER ? '<b>O Video Team não vê a tua agenda sozinho: carrega em «Escolher contactos no telemóvel» e, no seletor que abre, usa «Selecionar tudo» (ou marca só a equipa) e confirma. Fica guardado neste aparelho e casa com os nomes da equipa. Para um só, usa o 📇 da pessoa. </b>' : 'No iPhone ou no computador não há acesso direto aos contactos: ') + 'Em contacts.google.com: <b>Exportar → Google CSV</b>, e importa o ficheiro aqui (também serve um .vcf).</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + (PICKER ? '<button class="b pri" data-acao="pickVarios">Escolher contactos no telemóvel</button>' : '') + '<button class="b' + (PICKER ? '' : ' pri') + '" data-acao="google">Importar do Google Contactos</button>' + '<button class="b" data-acao="importar">Importar ficheiro (.csv / .vcf)</button><input type="file" id="vtch-fich" accept=".csv,.vcf,text/csv,text/vcard,text/x-vcard" hidden>' +
         '<span class="nota" style="margin:0" role="status">' + (S.importou || (S.lista.length ? S.lista.length + ' contactos importados' : 'Ainda sem contactos importados')) + '</span>' +
         (S.lista.length ? '<button class="b perigo" data-acao="limpaContactos">Apagar importados</button>' : '') + '</div>' + (S.pedeCid || S.googleErro ? ajudaGoogle() : '') + '</div>';
     }
@@ -385,6 +388,7 @@
         lsSet(LS_CID, v); S.pedeCid = false; S.googleErro = ''; importarGoogle(v);
         return;
       }
+      if (a === 'marcaTodas' || a === 'marcaNenhuma') { pessoasVisiveis().forEach(function (c) { S.sel[c.id] = a === 'marcaTodas'; }); desenhar(); return; }
       if (a === 'todos') { S.todos = !S.todos; desenhar(); return; }
       if (a === 'pick' || a === 'pickVarios') {
         if (!PICKER) return;
