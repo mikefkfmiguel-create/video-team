@@ -62,19 +62,20 @@
   .bal.pend { opacity: .6; }
   .bal .foto { display: block; margin: 2px 0 4px; max-width: 100%; width: 260px; aspect-ratio: 4 / 3; border-radius: 10px; background: var(--line); overflow: hidden; cursor: zoom-in; border: 0; padding: 0; }
   .bal .foto img { display: block; width: 100%; height: 100%; object-fit: cover; }
-  #camara { flex: none; width: 34px; height: 34px; border: 0; border-radius: 50%; background: var(--line); color: inherit; font-size: 16px; line-height: 1; padding: 0; cursor: pointer; }
+  #camara { flex: none; width: 40px; height: 40px; border: 0; border-radius: 50%; background: var(--line); color: inherit; font-size: 18px; line-height: 1; padding: 0; cursor: pointer; }
   #camara:disabled { opacity: .45; }
-  /* a escrever: os icones encolhem para a caixa ter mais largura */
-  #camara, #modoAviso { margin-bottom: 5px; }      /* alinhados ao centro de uma caixa de 44 px */
-  footer.escreve #camara, footer.escreve #modoAviso { margin-bottom: 7px; }
+  /* a escrever: pin e camara desaparecem (usam-se antes de escrever) e a caixa fica com a largura toda */
+  #camara, #modoAviso { margin-bottom: 2px; }      /* alinhados ao centro de uma caixa de 44 px */
   #expandir { margin-bottom: 6px; }
-  footer.escreve #camara, footer.escreve #modoAviso { width: 30px; height: 30px; font-size: 14px; }
+  @media (hover: none) and (pointer: coarse) { footer.escreve #camara, footer.escreve #modoAviso { display: none; } }      /* no telemovel, a escrever: so a caixa larga e o botao de enviar */
   #expandir { flex: none; width: 32px; height: 32px; border: 0; border-radius: 50%; background: var(--line); color: inherit; font-size: 17px; line-height: 1; cursor: pointer; }
   #expandir[hidden] { display: none; }
   #editor { position: fixed; inset: 0; z-index: 40; background: var(--bg); display: flex; flex-direction: column; width: min(100%, 720px); margin: 0 auto; padding-top: env(safe-area-inset-top); }
   #editor[hidden] { display: none; }
   #editor .eb { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--panel); border-bottom: 1px solid var(--line); }
   #editor .eb b { flex: 1; font-size: 16px; }
+  #editor.fixa .eb { background: var(--aviso); color: var(--aviso-ink); border-bottom-color: var(--aviso-line); }
+  #editor.fixa .ec { color: var(--aviso-ink); }
   #editor .eb button { flex: none; width: 44px; height: 44px; border: 0; border-radius: 50%; background: var(--line); color: inherit; font-size: 20px; cursor: pointer; }
   #editor .eb #edEnviar { background: linear-gradient(135deg, var(--acc2), var(--acc)); color: #fff; font-size: 19px; }
   #editor .eb #edFixar { background: var(--aviso); border: 1px solid var(--aviso-line); }
@@ -98,7 +99,7 @@
   #texto:focus { outline: 2px solid var(--acc); outline-offset: 0; }
   #enviar { flex: none; width: 44px; height: 44px; border: 0; border-radius: 50%; background: linear-gradient(135deg, var(--acc2), var(--acc)); color: #fff; font-size: 19px; cursor: pointer; }
   #enviar:disabled { opacity: .45; }
-  #modoAviso { flex: none; width: 34px; height: 34px; padding: 0; border: 1px solid var(--aviso-line); border-radius: 50%; background: var(--aviso); color: var(--aviso-ink); font: inherit; font-size: 15px; line-height: 1; cursor: pointer; }
+  #modoAviso { flex: none; width: 40px; height: 40px; padding: 0; border: 1px solid var(--aviso-line); border-radius: 50%; background: var(--aviso); color: var(--aviso-ink); font: inherit; font-size: 17px; line-height: 1; cursor: pointer; }
   #modoAviso[aria-pressed=true] { background: #f5b800; color: #2a1d00; border-color: #f5b800; box-shadow: 0 0 0 3px rgba(245,184,0,.35); }
   /* folha com a lista de pessoas */
   #folha { position: fixed; inset: 0; z-index: 10; background: rgba(0,0,0,.5); display: flex; align-items: flex-end; justify-content: center; }
@@ -173,7 +174,7 @@
 </div>
 
 <div id="editor" hidden role="dialog" aria-modal="true" aria-label="Escrever mensagem">
-  <div class="eb"><button id="edFecha" type="button" aria-label="Voltar">←</button><b>Mensagem</b><button id="edFixar" type="button" aria-pressed="false" aria-label="Fixar a próxima mensagem" hidden>📌</button><button id="edEnviar" type="button" aria-label="Enviar">➤</button></div>
+  <div class="eb"><button id="edFecha" type="button" aria-label="Voltar">←</button><b id="edTit">Mensagem</b><button id="edFixar" type="button" aria-pressed="false" aria-label="Fixar esta mensagem no topo" hidden>📌</button><button id="edEnviar" type="button" aria-label="Enviar">➤</button></div>
   <textarea id="textoGrande" maxlength="2000" placeholder="Escreve a tua mensagem" aria-label="Mensagem"></textarea>
   <div class="ec" id="edConta">0 / 2000</div>
 </div>
@@ -484,7 +485,7 @@
     if (!t.trim()) return;
     var aviso = modoAviso && eu && eu.gere;
     var m = { id: 0, pid: eu.pid, nome: eu.nome, texto: t, ts: Date.now(), aviso: aviso ? 1 : 0, fixa: 0, pendente: true };
-    msgs.push(m); $('texto').value = ''; cresce(); desenhar(); paraOFim();
+    msgs.push(m); $('texto').value = ''; cresce(); encolher(); desenhar(); paraOFim();
     enviarTexto(t, aviso, m);
     if (aviso) { modoAviso = false; $('modoAviso').setAttribute('aria-pressed', 'false'); $('texto').placeholder = 'Mensagem'; }
   }
@@ -506,20 +507,26 @@
   $('texto').addEventListener('focus', encolher); $('texto').addEventListener('blur', encolher); $('texto').addEventListener('input', encolher);
   // escrever em ecra inteiro (para textos compridos)
   function contarEd() { $('edConta').textContent = $('textoGrande').value.length + ' / 2000'; }
+  function pintarEditor() {
+    var f = !!modoAviso;
+    $('editor').classList.toggle('fixa', f); $('edFixar').setAttribute('aria-pressed', String(f));
+    $('edTit').textContent = f ? '📌 Mensagem fixa no topo' : 'Mensagem';
+    $('textoGrande').placeholder = f ? 'Esta mensagem fica fixa no topo, para todos' : 'Escreve a tua mensagem';
+  }
   function abrirEditor() {
     $('textoGrande').value = $('texto').value; contarEd();
-    $('edFixar').hidden = !(eu && eu.gere); $('edFixar').setAttribute('aria-pressed', String(modoAviso));
+    $('edFixar').hidden = !(eu && eu.gere); pintarEditor();
     $('editor').hidden = false;
     var t = $('textoGrande'); t.focus(); try { t.setSelectionRange(t.value.length, t.value.length); } catch (e) {}
   }
-  function fecharEditor() { $('texto').value = $('textoGrande').value; $('editor').hidden = true; cresce(); encolher(); }
+  function fecharEditor() { $('texto').value = $('textoGrande').value; $('editor').hidden = true; modoAviso = false; $('modoAviso').setAttribute('aria-pressed', 'false'); cresce(); encolher(); }
   $('expandir').onclick = abrirEditor;
   $('edFecha').onclick = fecharEditor;
   $('textoGrande').addEventListener('input', contarEd);
-  $('edFixar').onclick = function () { modoAviso = !modoAviso; this.setAttribute('aria-pressed', String(modoAviso)); $('modoAviso').setAttribute('aria-pressed', String(modoAviso)); $('textoGrande').focus(); };
-  $('edEnviar').onclick = function () { $('texto').value = $('textoGrande').value; $('editor').hidden = true; enviar(); cresce(); encolher(); };      // vazia: altura de uma linha (o texto de ajuda nao conta)
+  $('edFixar').onclick = function () { modoAviso = !modoAviso; pintarEditor(); $('textoGrande').focus(); };
+  $('edEnviar').onclick = function () { $('texto').value = $('textoGrande').value; $('editor').hidden = true; enviar(); modoAviso = false; $('modoAviso').setAttribute('aria-pressed', 'false'); cresce(); encolher(); };      // vazia: altura de uma linha (o texto de ajuda nao conta)
   $('texto').addEventListener('input', cresce);
-  $('modoAviso').onclick = function () { modoAviso = !modoAviso; this.setAttribute('aria-pressed', String(modoAviso)); $('texto').placeholder = modoAviso ? 'Fica fixa no topo' : 'Mensagem'; $('texto').focus(); };
+  $('modoAviso').onclick = function () { if (!(eu && eu.gere)) return; modoAviso = true; this.setAttribute('aria-pressed', 'true'); abrirEditor(); };      // o pin abre o espaco de escrita das mensagens fixas
 
   // ---------------------------------------------------------------- fotos
   // A foto e reduzida AQUI, no telemovel (1600 px, JPEG): ~0,3 MB em vez de varios MB, e o reencode apaga a localizacao (EXIF).
