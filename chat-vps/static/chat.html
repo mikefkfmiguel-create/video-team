@@ -62,11 +62,14 @@
   .bal.pend { opacity: .6; }
   .bal .foto { display: block; margin: 2px 0 4px; max-width: 100%; width: 260px; aspect-ratio: 4 / 3; border-radius: 10px; background: var(--line); overflow: hidden; cursor: zoom-in; border: 0; padding: 0; }
   .bal .foto img { display: block; width: 100%; height: 100%; object-fit: cover; }
-  #camara { flex: none; width: 44px; height: 44px; border: 0; border-radius: 50%; background: var(--line); color: inherit; font-size: 20px; cursor: pointer; }
+  #camara { flex: none; width: 34px; height: 34px; border: 0; border-radius: 50%; background: var(--line); color: inherit; font-size: 16px; line-height: 1; padding: 0; cursor: pointer; }
   #camara:disabled { opacity: .45; }
   /* a escrever: os icones encolhem para a caixa ter mais largura */
-  footer.escreve #camara, footer.escreve #modoAviso { width: 36px; height: 36px; font-size: 16px; }
-  #expandir { flex: none; width: 36px; height: 36px; border: 0; border-radius: 50%; background: var(--line); color: inherit; font-size: 17px; line-height: 1; cursor: pointer; }
+  #camara, #modoAviso { margin-bottom: 5px; }      /* alinhados ao centro de uma caixa de 44 px */
+  footer.escreve #camara, footer.escreve #modoAviso { margin-bottom: 7px; }
+  #expandir { margin-bottom: 6px; }
+  footer.escreve #camara, footer.escreve #modoAviso { width: 30px; height: 30px; font-size: 14px; }
+  #expandir { flex: none; width: 32px; height: 32px; border: 0; border-radius: 50%; background: var(--line); color: inherit; font-size: 17px; line-height: 1; cursor: pointer; }
   #expandir[hidden] { display: none; }
   #editor { position: fixed; inset: 0; z-index: 40; background: var(--bg); display: flex; flex-direction: column; width: min(100%, 720px); margin: 0 auto; padding-top: env(safe-area-inset-top); }
   #editor[hidden] { display: none; }
@@ -95,7 +98,7 @@
   #texto:focus { outline: 2px solid var(--acc); outline-offset: 0; }
   #enviar { flex: none; width: 44px; height: 44px; border: 0; border-radius: 50%; background: linear-gradient(135deg, var(--acc2), var(--acc)); color: #fff; font-size: 19px; cursor: pointer; }
   #enviar:disabled { opacity: .45; }
-  #modoAviso { flex: none; width: 44px; height: 44px; padding: 0; border: 1px solid var(--aviso-line); border-radius: 50%; background: var(--aviso); color: var(--aviso-ink); font: inherit; font-size: 19px; line-height: 1; cursor: pointer; }
+  #modoAviso { flex: none; width: 34px; height: 34px; padding: 0; border: 1px solid var(--aviso-line); border-radius: 50%; background: var(--aviso); color: var(--aviso-ink); font: inherit; font-size: 15px; line-height: 1; cursor: pointer; }
   #modoAviso[aria-pressed=true] { background: #f5b800; color: #2a1d00; border-color: #f5b800; box-shadow: 0 0 0 3px rgba(245,184,0,.35); }
   /* folha com a lista de pessoas */
   #folha { position: fixed; inset: 0; z-index: 10; background: rgba(0,0,0,.5); display: flex; align-items: flex-end; justify-content: center; }
