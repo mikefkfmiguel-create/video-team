@@ -8,8 +8,7 @@
 import { parseEscala } from './parse.js';
 import { handleSala, loadDoc, publicView } from './salas.js';
 import { serveDl } from './folha.js';
-import { handleChat, handleChatAdmin } from './chat.js';
-export { SalaChat } from './chat.js';
+import { handleChatAdmin, saudeChat } from './chat.js';
 
 const BASE = 'http://7eventos.avk.pt/7Eventos';
 // A escala so e lida do 7Eventos pelo cron (poucas vezes ao dia), pela primeira pessoa
@@ -208,10 +207,10 @@ async function handleStatus(req, env, h) {
 async function handleAdmin(url, req, env, h, myRole) {
   const myRank = RANK[myRole] ?? 0;
   // equipa por sala/funcao: so o dono edita (admins aprovados por email ficam de fora)
-  // chat por evento: so o dono cria/fecha salas e emite os links pessoais
+  // chat por evento (servidor no VPS): so o dono cria/fecha salas e emite os links pessoais; o Worker so reencaminha
   if (url.pathname.startsWith('/api/admin/chat')) {
     if (myRole !== 'owner') return json({ error: 'so o dono' }, 403, h);
-    return handleChatAdmin(url, req, env, h, { json, readJson });
+    return handleChatAdmin(url, req, env, h, { json });
   }
   if (url.pathname.startsWith('/api/admin/sala')) {
     if (myRole !== 'owner') return json({ error: 'so o dono' }, 403, h);
@@ -378,13 +377,11 @@ export default {
       // pedir acesso e ver o estado do pedido: sem PIN, e o ponto de entrada de quem ainda nao tem nada
       if (url.pathname === '/api/request' && req.method === 'POST') return handleRequest(req, env, h);
       if (url.pathname === '/api/status' && req.method === 'GET') return handleStatus(req, env, h);
+      if (url.pathname === '/api/chat-saude' && req.method === 'GET') return saudeChat(env, h, { json });
 
       // ficheiros temporarios (exportar/imprimir): o proprio token e o segredo, nao precisam de PIN
       const dl = url.pathname.match(/^\/dl\/([a-f0-9]{32})$/);
       if (dl && req.method === 'GET') return serveDl(env, dl[1], h);
-
-      // chat: o proprio link pessoal (token) e a credencial, nao ha PIN
-      if (url.pathname.startsWith('/api/chat/')) return await handleChat(url, req, env, h, { json, readJson });
 
       if (req.method !== 'GET' && !url.pathname.startsWith('/api/admin/')) return json({ error: 'metodo' }, 405, h);
 

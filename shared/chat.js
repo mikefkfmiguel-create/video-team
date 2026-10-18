@@ -8,6 +8,10 @@
   var LS_ENV = 'vt.chat.enviados'; // {sala|id|canal: 1}
   var LS_MSG = 'vt.chat.msg';      // modelo da mensagem
   var LS_NOME = 'vt.chat.nome';    // como a regie aparece no chat
+  var LS_CID = 'vt.google.cid';    // ID de cliente OAuth (nao e segredo): permite «Importar do Google Contactos» em qualquer aparelho
+  var GOOGLE_CLIENT_ID = '';       // preenchido quando o Mike criar o ID (ver README do chat); ate la cola-se no ecra e fica neste aparelho
+  var CHAT_BASE = 'https://things-on.mike-app.com/chat/';   // onde o chat vive (PWA no VPS)
+  var GOOGLE_SCOPE = 'https://www.googleapis.com/auth/contacts.readonly';
   var MSG_PADRAO = 'Olá {nome}! Vamos falar neste chat durante o evento «{evento}»: {link}\n\nÉ o teu link pessoal, não o partilhes. Abre-se no telemóvel, sem instalar nada.';
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -145,6 +149,38 @@
     return { n: n, k: chave(n), t: t, e: e };
   }
 
+  // Google Contactos: o navegador mostra o ecra de autorizacao do Google (so leitura de contactos). O token vive so na memoria e e revogado no fim.
+  function clientId() { return String(ls(LS_CID, '') || GOOGLE_CLIENT_ID || '').trim(); }
+  function carregarGsi() {
+    if (typeof window === 'undefined' || (window.google && window.google.accounts && window.google.accounts.oauth2)) return Promise.resolve();
+    if (window.__vtGsi) return window.__vtGsi;
+    window.__vtGsi = new Promise(function (res, rej) {
+      var sc = document.createElement('script'); sc.src = 'https://accounts.google.com/gsi/client'; sc.async = true;
+      sc.onload = function () { res(); }; sc.onerror = function () { window.__vtGsi = null; rej(new Error('Não consegui falar com o Google (sem ligação?).')); };
+      document.head.appendChild(sc);
+    });
+    return window.__vtGsi;
+  }
+  function daPessoaGoogle(c) {
+    var n = (c.names && c.names[0] && c.names[0].displayName) || '', t = [], e = (c.emailAddresses && c.emailAddresses[0] && c.emailAddresses[0].value) || '';
+    (c.phoneNumbers || []).forEach(function (x) { var f = fone(x.canonicalForm || x.value); if (f && t.indexOf(f) < 0) t.push(f); });
+    return { n: n, k: chave(n), t: t, e: e };
+  }
+  function buscarGoogle(token) {
+    var out = [];
+    function pagina(pt, n) {
+      var url = 'https://people.googleapis.com/v1/people/me/connections?personFields=names,phoneNumbers,emailAddresses&pageSize=1000&sortOrder=FIRST_NAME_ASCENDING' + (pt ? '&pageToken=' + encodeURIComponent(pt) : '');
+      return fetch(url, { headers: { Authorization: 'Bearer ' + token } }).then(function (r) {
+        return r.json().then(function (j) {
+          if (!r.ok) throw new Error(r.status === 403 ? 'O Google recusou: ativa a «People API» no projeto (ver passo 2).' : (j && j.error && j.error.message) || 'Erro do Google ' + r.status);
+          (j.connections || []).forEach(function (c) { var x = daPessoaGoogle(c); if (x.n && (x.t.length || x.e)) out.push(x); });
+          return j.nextPageToken && n < 25 ? pagina(j.nextPageToken, n + 1) : out;
+        });
+      });
+    }
+    return pagina('', 0);
+  }
+
   // ---------------------------------------------------------------- o ecra
   function abrir(ctx) {
     if (document.getElementById('vtch')) return;
@@ -161,7 +197,7 @@
     };
     crew.forEach(function (c) { S.sel[c.id] = temFiltro ? !!c.filtrado : true; });
     function pessoasVisiveis() { return crew.filter(function (c) { return S.todos || !temFiltro || c.filtrado; }); }
-    var base = ctx.chatBase || (function () { try { var u = new URL('chat.html', location.href); u.search = ''; u.hash = ''; return u.href; } catch (e) { return 'chat.html'; } })();
+    var base = ctx.chatBase || CHAT_BASE;
 
     function H(caminho, corpo) {
       return fetch(ctx.api + '/api/admin/chat' + caminho, {
@@ -223,9 +259,21 @@
 
     function caixaContactos() {
       return '<div class="caixa"><h4>Contactos</h4><div class="nota">Os números ficam só neste aparelho. ' + (PICKER ? 'No telemóvel, escolhe só os contactos da equipa (ou usa o 📇 em cada pessoa). ' : 'No iPhone ou no computador não há acesso direto aos contactos: ') + 'Em contacts.google.com: <b>Exportar → Google CSV</b>, e importa o ficheiro aqui (também serve um .vcf).</div>' +
-        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + (PICKER ? '<button class="b pri" data-acao="pickVarios">Escolher contactos no telemóvel</button>' : '') + '<button class="b" data-acao="importar">Importar ficheiro (.csv / .vcf)</button><input type="file" id="vtch-fich" accept=".csv,.vcf,text/csv,text/vcard,text/x-vcard" hidden>' +
-        '<span class="nota" style="margin:0">' + (S.importou || (S.lista.length ? S.lista.length + ' contactos importados' : 'Ainda sem contactos importados')) + '</span>' +
-        (S.lista.length ? '<button class="b perigo" data-acao="limpaContactos">Apagar importados</button>' : '') + '</div></div>';
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="b pri" data-acao="google">Importar do Google Contactos</button>' + (PICKER ? '<button class="b" data-acao="pickVarios">Escolher contactos no telemóvel</button>' : '') + '<button class="b" data-acao="importar">Importar ficheiro (.csv / .vcf)</button><input type="file" id="vtch-fich" accept=".csv,.vcf,text/csv,text/vcard,text/x-vcard" hidden>' +
+        '<span class="nota" style="margin:0" role="status">' + (S.importou || (S.lista.length ? S.lista.length + ' contactos importados' : 'Ainda sem contactos importados')) + '</span>' +
+        (S.lista.length ? '<button class="b perigo" data-acao="limpaContactos">Apagar importados</button>' : '') + '</div>' + (S.pedeCid || S.googleErro ? ajudaGoogle() : '') + '</div>';
+    }
+
+    function ajudaGoogle() {
+      return '<div class="nota" style="margin-top:10px">' + (S.googleErro ? '<div class="erro">' + esc(S.googleErro) + '</div>' : '') +
+        (S.pedeCid ? '<b>Ligar ao Google (uma vez, 5 minutos).</b> O Google pede-te autorização em qualquer aparelho, mas primeiro é preciso um «ID de cliente»:<ol style="margin:6px 0 8px 18px;padding:0">' +
+        '<li>Em <b>console.cloud.google.com</b> cria um projeto («Video Team»).</li>' +
+        '<li><b>APIs e serviços → Biblioteca</b>: ativa a <b>People API</b>.</li>' +
+        '<li><b>Ecrã de consentimento OAuth</b> (Google Auth Platform): tipo Externo, nome «Video Team»; em Público-alvo deixa «Em teste» e junta o teu Gmail como utilizador de teste; em Acesso a dados junta o âmbito <b>contacts.readonly</b>.</li>' +
+        '<li><b>Credenciais → Criar credenciais → ID de cliente OAuth → Aplicação Web</b>; em «Origens JavaScript autorizadas» põe <b>' + esc(location.origin) + '</b>.</li>' +
+        '<li>Copia o ID de cliente (acaba em .apps.googleusercontent.com) e cola aqui:</li></ol>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap"><input type="text" id="vtch-cid" placeholder="123456-abc.apps.googleusercontent.com" value="' + esc(clientId()) + '" autocomplete="off" spellcheck="false" style="flex:1;min-width:200px">' +
+        '<button class="b pri" data-acao="gravaCid">Guardar e importar</button></div>' : '') + '</div>';
     }
 
     // ---- 2) gerir: links por pessoa
@@ -271,6 +319,27 @@
       var m = document.getElementById('vtch-msg'); if (m) { S.msg = m.value || MSG_PADRAO; lsSet(LS_MSG, S.msg); }
     }
 
+    // tem de arrancar logo no clique (senao o navegador bloqueia a janela do Google): o script do Google e carregado ao abrir este ecra
+    function importarGoogle(cid) {
+      S.googleErro = ''; S.importou = 'A pedir autorização ao Google…'; desenhar();
+      var g = window.google && window.google.accounts && window.google.accounts.oauth2;
+      if (!g) { S.importou = ''; S.googleErro = 'O Google ainda está a carregar. Tenta outra vez daqui a um segundo.'; carregarGsi().catch(function (e) { S.googleErro = e.message; desenhar(); }); desenhar(); return; }
+      var token = null;
+      new Promise(function (res, rej) {
+        var tc = g.initTokenClient({
+          client_id: cid, scope: GOOGLE_SCOPE,
+          callback: function (resp) { if (resp && resp.access_token) res(resp.access_token); else rej(new Error((resp && (resp.error_description || resp.error)) || 'O Google não deu autorização.')); },
+          error_callback: function (e) { rej(new Error(e && e.type === 'popup_closed' ? 'Fechaste a janela do Google antes de autorizar.' : e && e.type === 'popup_failed_to_open' ? 'O navegador bloqueou a janela do Google. Permite pop-ups para este site.' : (e && (e.message || e.type)) || 'Falhou a autorização.')); }
+        });
+        tc.requestAccessToken({ prompt: '' });
+      }).then(function (t) { token = t; S.importou = 'A ler os contactos…'; desenhar(); return buscarGoogle(t); }).then(function (lista) {
+        if (!lista.length) { S.importou = ''; S.googleErro = 'Não encontrei contactos com nome e telefone na tua conta Google.'; return; }
+        S.lista = lista;
+        S.importou = lista.length + ' contactos importados do Google' + (lsSet(LS_G, lista) ? '' : ' (não cabem na memória deste aparelho: servem só até fechares isto)');
+      }).catch(function (e) { S.importou = ''; S.googleErro = e && e.message === 'Failed to fetch' ? 'Sem ligação ao Google.' : (e && e.message) || 'Erro.'; })
+        .then(function () { try { if (token && g.revoke) g.revoke(token, function () {}); } catch (x) { /* o token expira sozinho */ } desenhar(); });
+    }
+
     function importar(f) {
       var rd = new FileReader();
       rd.onload = function () {
@@ -304,6 +373,18 @@
       var a = b.getAttribute('data-acao'), id = b.getAttribute('data-id');
       if (a === 'sair') { el.remove(); var s = document.getElementById('vtch-css'); if (s) s.remove(); return; }
       lerCaixas();
+      if (a === 'google') {
+        var cid = clientId();
+        if (!cid) { S.pedeCid = true; S.googleErro = ''; desenhar(); return; }
+        importarGoogle(cid);
+        return;
+      }
+      if (a === 'gravaCid') {
+        var v = ((document.getElementById('vtch-cid') || {}).value || '').trim();
+        if (!/^[0-9]+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/.test(v)) { S.googleErro = 'Esse ID de cliente não parece válido (termina em .apps.googleusercontent.com).'; desenhar(); return; }
+        lsSet(LS_CID, v); S.pedeCid = false; S.googleErro = ''; importarGoogle(v);
+        return;
+      }
       if (a === 'todos') { S.todos = !S.todos; desenhar(); return; }
       if (a === 'pick' || a === 'pickVarios') {
         if (!PICKER) return;
@@ -360,6 +441,7 @@
     });
 
     desenhar();
+    if (typeof document !== 'undefined') carregarGsi().catch(function () { /* sem Google: continua a haver ficheiro e telemovel */ });
     H('?key=' + encodeURIComponent(ctx.sig)).then(function (j) {
       if (j.existe) { S.doc = j; S.vista = 'gerir'; } else S.vista = 'escolher';
       desenhar();

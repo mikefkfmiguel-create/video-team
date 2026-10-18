@@ -18,8 +18,11 @@ AQUI = os.path.dirname(os.path.abspath(__file__))
 WORKER = os.path.join(AQUI, "..", "worker")
 WR = next(p for p in (os.path.join(WORKER, "node_modules", "wrangler", "bin", "wrangler.js"),
                        os.path.join(AQUI, "..", "..", "FOTOWALL", "worker", "node_modules", "wrangler", "bin", "wrangler.js")) if os.path.exists(p))
-PORTA, PAG = 8789, 5702
+PORTA, PAG, PORTA_CHAT = 8789, 5702, 8794
 API = "http://127.0.0.1:%d" % PORTA
+CHAT = "http://127.0.0.1:%d" % PORTA_CHAT
+SEGREDO = "segredo-so-de-teste"
+PY = os.path.join(AQUI, "..", "chat-vps", ".venv", "Scripts", "python.exe")
 ORIGEM = "http://127.0.0.1:%d" % PAG
 SHOT = sys.argv[1] if len(sys.argv) > 1 else None
 SIG = "os:900:Portugal Digital Summit"
@@ -33,6 +36,21 @@ CSV = "\r\n".join([
     "Marta,Isabel,Lopes,,Mobile,925 111 222",
     "Amigo,,Qualquer,,Mobile,910 000 000",
 ])
+GSI_FALSO = """
+window.google = { accounts: { oauth2: {
+  initTokenClient: function (o) { return { requestAccessToken: function () {
+    window.__gsi = (window.__gsi || []).concat([{ cid: o.client_id, scope: o.scope }]);
+    setTimeout(function () { if (window.__gsiNegar) o.error_callback({ type: 'popup_closed' }); else o.callback({ access_token: 'tok-falso' }); }, 10);
+  } }; },
+  revoke: function (t, cb) { window.__revogado = t; if (cb) cb(); }
+} } };
+"""
+PEOPLE_P1 = {"connections": [
+    {"names": [{"displayName": "Ana Silva"}], "phoneNumbers": [{"value": "911 111 111", "canonicalForm": "+351911111111"}], "emailAddresses": [{"value": "ana@google.pt"}]},
+    {"names": [{"displayName": "Sem Telefone"}]}], "nextPageToken": "pg2"}
+PEOPLE_P2 = {"connections": [
+    {"names": [{"displayName": "Marta Lopes"}], "phoneNumbers": [{"value": "+351 922 222 222"}]},
+    {"names": [{"displayName": "Rui Costa"}], "phoneNumbers": [{"value": "933 333 333"}]}]}
 PAGINA = """<!doctype html><html lang="pt"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>:root{--bg:#f4f6fb;--panel:#fff;--ink:#0C1020;--mut:#5b6478;--line:#e1e6f0;--acc:#2E7BFF;--soft:#eef1f8}body{margin:0;background:var(--bg);color:var(--ink);font:14px system-ui}</style>
 </head><body><button id="abre">abrir</button><script src="chat.js"></script>
@@ -62,15 +80,18 @@ def chamar(caminho, k=None, pin=None):
         h["X-Chat"] = k
     if pin:
         h["X-PIN"] = pin
+    base = CHAT if caminho.startswith("/chat/") else API          # membros: servidor do chat; dono: Worker
     try:
-        r = urllib.request.urlopen(urllib.request.Request(API + caminho, headers=h))
+        r = urllib.request.urlopen(urllib.request.Request(base + caminho, headers=h))
         return r.status, json.loads(r.read())
     except urllib.error.HTTPError as e:
         return e.code, None
 
 
+srv = subprocess.Popen([PY, os.path.join(AQUI, "..", "chat-vps", "server.py")], env=dict(os.environ, VTCHAT_DATA=tempfile.mkdtemp(prefix="vt_chatadm_d_"), VTCHAT_SECRET=SEGREDO, VTCHAT_PORT=str(PORTA_CHAT)),
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 proc = subprocess.Popen(["node", WR, "dev", "--local", "--port", str(PORTA), "--persist-to", tempfile.mkdtemp(prefix="vt_chatadm_"), "--var", "VT_PIN_ADMIN:dono-teste",
-                         "--var", "ALLOWED_ORIGINS:" + ORIGEM], cwd=WORKER, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                         "--var", "CHAT_URL:" + CHAT, "--var", "CHAT_SECRET:" + SEGREDO, "--var", "ALLOWED_ORIGINS:" + ORIGEM], cwd=WORKER, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 try:
     for _ in range(120):
         try:
@@ -80,6 +101,12 @@ try:
             break
         except Exception:
             time.sleep(1)
+    for _ in range(60):
+        try:
+            urllib.request.urlopen(CHAT + "/chat/", timeout=2).read()
+            break
+        except Exception:
+            time.sleep(0.5)
     chat_js = open(os.path.join(AQUI, "..", "shared", "chat.js"), "rb").read()
     csv_path = os.path.join(tempfile.mkdtemp(prefix="vt_csv_"), "contacts.csv")
     open(csv_path, "w", encoding="utf-8").write(CSV)
@@ -91,6 +118,14 @@ try:
         pag.add_init_script("window.__pick = []; window.__picks = []; navigator.contacts = { select: function (props, opts) { window.__picks.push({props: props, multiple: !!(opts && opts.multiple)}); return Promise.resolve(window.__pick); } };")
         erros = []
         pag.on("pageerror", lambda e: erros.append(str(e)))
+        pedidos_google = []
+
+        def people(route):
+            pedidos_google.append((route.request.url, route.request.headers.get("authorization")))
+            route.fulfill(status=200, content_type="application/json", headers={"Access-Control-Allow-Origin": "*"},
+                          body=json.dumps(PEOPLE_P2 if "pageToken=pg2" in route.request.url else PEOPLE_P1))
+        pag.route("https://accounts.google.com/gsi/client", lambda rt: rt.fulfill(status=200, content_type="text/javascript", body=GSI_FALSO))
+        pag.route("https://people.googleapis.com/**", people)
         pag.route(ORIGEM + "/**", lambda r: r.fulfill(status=200, body=chat_js if r.request.url.endswith("chat.js") else PAGINA.encode("utf-8"),
                                                        content_type="application/javascript" if r.request.url.endswith("chat.js") else "text/html; charset=utf-8"))
         pag.goto(ORIGEM + "/")
@@ -104,7 +139,30 @@ try:
         pag.click("[data-acao=todos]")
         ok(pag.locator("#vtch .linha").count() == 3, "e volta a esconder-se")
 
-        # ---- importar contactos do Google
+        # ---- importar do Google Contactos (qualquer aparelho): ID de cliente (uma vez) + autorizacao do Google
+        pag.click("[data-acao=google]")
+        ok("ID de cliente" in pag.inner_text("#vtch") and pag.locator("#vtch-cid").count() == 1, "sem ID de cliente: explica os passos e pede para o colar (uma vez)")
+        pag.fill("#vtch-cid", "isto nao e um id")
+        pag.click("[data-acao=gravaCid]")
+        ok("não parece válido" in pag.inner_text("#vtch"), "um ID de cliente invalido e recusado")
+        pag.evaluate("window.__gsiNegar = true")
+        pag.fill("#vtch-cid", "123456789-abc_def.apps.googleusercontent.com")
+        pag.click("[data-acao=gravaCid]")
+        pag.wait_for_function("document.getElementById('vtch').innerText.includes('Fechaste a janela do Google')", timeout=5000)
+        ok(True, "se a pessoa fecha a janela do Google: mensagem clara, nada importado")
+        pag.evaluate("window.__gsiNegar = false")
+        pag.click("[data-acao=google]")
+        pag.wait_for_function("document.getElementById('vtch').innerText.includes('3 contactos importados do Google')", timeout=8000)
+        gsi = pag.evaluate("window.__gsi")
+        ok(gsi[-1]["scope"] == "https://www.googleapis.com/auth/contacts.readonly" and gsi[-1]["cid"].endswith(".apps.googleusercontent.com"), "pede so leitura dos contactos (contacts.readonly)")
+        ok(len(pedidos_google) == 2 and all(a == "Bearer tok-falso" for _u, a in pedidos_google) and "phoneNumbers" in pedidos_google[0][0] and "pageToken=pg2" in pedidos_google[1][0], "le as duas paginas do Google, com o token, so nome/telefone/email")
+        ok(pag.evaluate("window.__revogado") == "tok-falso", "revoga o acesso logo a seguir (o token nao fica)")
+        t = pag.inner_text("#vtch")
+        ok("+351 911 111 111" in t and "+351 922 222 222" in t and "+351 933 333 333" in t, "a Ana, a Marta e o Rui ficam com o telemovel do Google (casados pelo nome)")
+        ok(pag.evaluate("JSON.parse(localStorage.getItem('vt.google.cid'))") == "123456789-abc_def.apps.googleusercontent.com" and "ID de cliente" not in pag.inner_text("#vtch"), "o ID de cliente fica guardado e a ajuda some")
+        ok(not pag.evaluate("(localStorage.getItem('vt.google.cid')||'') + JSON.stringify(Object.keys(localStorage)) ").count("tok-falso"), "o token do Google nunca e guardado")
+
+        # ---- importar contactos do Google (ficheiro)
         pag.set_input_files("#vtch-fich", csv_path)
         pag.wait_for_function("document.getElementById('vtch').innerText.includes('5 contactos importados')", timeout=5000)
         ok(True, "importa o CSV do Google (5 contactos)")
@@ -150,9 +208,9 @@ try:
         m = re.match(r"https://wa\.me/351912345678\?text=(.+)$", href or "")
         corpo = urllib.parse.unquote(m.group(1)) if m else ""
         ok(bool(m) and "Olá Ana!" in corpo and "Portugal Digital Summit" in corpo, "WhatsApp da Ana: wa.me com o numero certo e a mensagem escrita (%s)" % corpo[:40].replace("\n", " "))
-        mt = re.search(r"/chat\.html#([a-f0-9]{40})", corpo)
-        ok(bool(mt), "a mensagem leva o link pessoal (chat.html#token)")
-        s, j = chamar("/api/chat/sala", k=mt.group(1)) if mt else (0, None)
+        mt = re.search(r"https://things-on\.mike-app\.com/chat/#([a-f0-9]{40})", corpo)
+        ok(bool(mt), "a mensagem leva o link pessoal (things-on.mike-app.com/chat/#token)")
+        s, j = chamar("/chat/api/sala", k=mt.group(1)) if mt else (0, None)
         ok(s == 200 and j["eu"]["nome"] == "Ana Silva" and j["evento"] == "Portugal Digital Summit", "esse link abre mesmo o chat como a Ana")
         ok("Olá Hugo!" in urllib.parse.unquote(pag.locator("#vtch .linha", has_text="Hugo Dias").locator("a.wa").get_attribute("href")), "cada pessoa leva o seu nome")
         ok(pag.locator("#vtch .linha", has_text="Hugo Dias").locator("a", has_text="SMS").get_attribute("href").startswith("sms:+351937776655?"), "SMS do Hugo")
@@ -160,7 +218,7 @@ try:
         ok(pag.locator("#vtch .linha", has_text="Hugo Dias").locator("a", has_text="Email").count() == 0, "sem email: nao mostra o botao (o Hugo)")
         ok(pag.locator("#vtch .linha", has_text="Rui Costa").locator("a", has_text="Email").get_attribute("href").startswith("mailto:rui@x.pt?"), "o email vindo do telemovel (Rui) tambem funciona")
         dono_href = pag.locator("a", has_text="Abrir o chat").get_attribute("href")
-        st, jd = chamar("/api/chat/sala", k=dono_href.split("#")[1])
+        st, jd = chamar("/chat/api/sala", k=dono_href.split("#")[1])
         ok(st == 200 and jd["eu"]["papel"] == "dono" and jd["eu"]["nome"] == "Mike", "o link da regie entra como dono, com o nome escolhido")
 
         # ---- marcar enviado (o link abre noutro separador: fecha-se)
@@ -173,7 +231,7 @@ try:
         pag.locator("#vtch .linha", has_text="Rui Costa").locator("button", has_text="Copiar").click()
         pag.wait_for_function("document.querySelector('#vtch').innerText.includes('Copiado')", timeout=5000)
         copiado = pag.evaluate("navigator.clipboard.readText()")
-        ok("Olá Rui!" in copiado and "chat.html#" in copiado, "copiar: mensagem do Rui com o link na area de transferencia")
+        ok("Olá Rui!" in copiado and "/chat/#" in copiado, "copiar: mensagem do Rui com o link na area de transferencia")
         if SHOT:
             pag.screenshot(path=os.path.join(SHOT, "admin-gerir.png"), full_page=True)
 
@@ -201,11 +259,11 @@ try:
         pag.locator("#vtch .linha", has_text="Hugo Dias").locator("[data-acao=remover]").click()
         pag.wait_for_function("!document.querySelector('#vtch').innerText.includes('Hugo Dias')", timeout=8000)
         tok_hugo = [m for m in antes["membros"] if m["id"] == "4"][0]["token"]
-        ok(chamar("/api/chat/sala", k=tok_hugo)[0] == 401, "retirar o Hugo: o link dele deixa de funcionar")
+        ok(chamar("/chat/api/sala", k=tok_hugo)[0] == 401, "retirar o Hugo: o link dele deixa de funcionar")
         pag.once("dialog", lambda d: d.accept())
         pag.click("[data-acao=fechar]")
         pag.wait_for_function("document.querySelector('#vtch').innerText.includes('Criar chat')", timeout=8000)
-        ok(chamar("/api/chat/sala", k=tok_ana)[0] == 401 and chamar("/api/chat/sala", k=dono_href.split("#")[1])[0] == 401, "fechar o chat: todos os links deixam de funcionar")
+        ok(chamar("/chat/api/sala", k=tok_ana)[0] == 401 and chamar("/chat/api/sala", k=dono_href.split("#")[1])[0] == 401, "fechar o chat: todos os links deixam de funcionar")
         ok(chamar("/api/admin/chat?key=" + urllib.parse.quote(SIG), pin="dono-teste")[1]["existe"] is False, "e a sala deixa de existir")
 
         # ---- chave errada
@@ -220,6 +278,7 @@ except Exception:
     traceback.print_exc()
     falhas += 1
 finally:
-    subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for pr in (proc, srv):
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(pr.pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 print("\nfalhas: %d" % falhas)
 sys.exit(1 if falhas else 0)

@@ -15,3 +15,7 @@ build/
 .wrangler/
 desktop/login.js
 desktop/app.js
+
+# chat no VPS
+chat-vps/.venv/
+chat-vps/__pycache__/

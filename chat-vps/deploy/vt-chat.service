@@ -1,0 +1,29 @@
+[Unit]
+Description=Video Team - chat por evento (salas, tempo real e notificacoes)
+After=network.target
+
+[Service]
+User=vtchat
+Group=vtchat
+WorkingDirectory=/opt/vt-chat
+Environment=VTCHAT_DATA=/var/lib/vt-chat
+Environment=VTCHAT_HOST=127.0.0.1
+Environment=VTCHAT_PORT=8782
+Environment=VTCHAT_VAPID_SUB=https://things-on.mike-app.com/chat/
+Environment=PYTHONUNBUFFERED=1
+# VTCHAT_SECRET (o mesmo que o Worker tem em CHAT_SECRET): ficheiro so legivel por root
+EnvironmentFile=/etc/vt-chat.env
+ExecStart=/opt/vt-chat/venv/bin/python /opt/vt-chat/server.py
+Restart=on-failure
+RestartSec=2
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/vt-chat
+MemoryMax=300M
+TasksMax=200
+
+[Install]
+WantedBy=multi-user.target

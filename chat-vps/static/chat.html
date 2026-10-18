@@ -7,9 +7,12 @@
 <meta name="description" content="Chat do evento">
 <meta name="theme-color" content="#0C1020">
 <meta name="robots" content="noindex">
-<link rel="manifest" href="manifest-chat.json">
-<link rel="icon" href="icons/favicon.png">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" id="mf" href="/chat/manifest.webmanifest">
+<link rel="icon" href="/chat/icons/favicon.png">
+<link rel="apple-touch-icon" href="/chat/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="VT Chat">
 <style>
   :root { color-scheme: light dark; --bg: #f4f6fb; --panel: #fff; --ink: #0C1020; --mut: #5b6478; --line: #e1e6f0; --acc: #2E7BFF; --acc2: #1246E6; --soft: #eef1f8; --mine: #dbe8ff; --mine-ink: #0C1020; --aviso: #fff4d6; --aviso-ink: #4a3500; --aviso-line: #f0d98a; --err: #d6334b; --ok: #1f9d55; }
   @media (prefers-color-scheme: dark) { :root { --bg: #0C1020; --panel: #131a2c; --ink: #e8ecf5; --mut: #8f9ab0; --line: #232c42; --acc: #3B8CFF; --acc2: #1246E6; --soft: #182036; --mine: #1b3a74; --mine-ink: #f1f5ff; --aviso: #3a2f10; --aviso-ink: #ffe9a8; --aviso-line: #6b5518; --err: #ff6b81; --ok: #3ccf7e; } }
@@ -29,6 +32,11 @@
   #estado { flex: none; text-align: center; font-size: 12px; padding: 4px 10px; background: var(--soft); color: var(--mut); }
   #estado.mal { background: #ffe3e7; color: #8a1230; }
   @media (prefers-color-scheme: dark) { #estado.mal { background: #4a1823; color: #ffc2cc; } }
+  #dica { flex: none; display: flex; gap: 8px; align-items: center; padding: 8px 14px; background: var(--soft); border-bottom: 1px solid var(--line); font-size: 13px; }
+  #dica span { flex: 1; }
+  #dica button { flex: none; height: 32px; padding: 0 12px; border: 0; border-radius: 8px; background: var(--acc); color: #fff; font: inherit; font-size: 13px; cursor: pointer; }
+  #dica button.nao { background: none; color: var(--mut); }
+  .ib.on { background: var(--acc); color: #fff; }
   #fixas { flex: none; max-height: 30vh; overflow: auto; border-bottom: 1px solid var(--aviso-line); background: var(--aviso); color: var(--aviso-ink); }
   .fixa { padding: 8px 14px; font-size: 13px; display: flex; gap: 8px; align-items: flex-start; }
   .fixa + .fixa { border-top: 1px solid var(--aviso-line); }
@@ -89,9 +97,11 @@
   <header>
     <div class="logo">VT</div>
     <div class="tit"><b id="evento">Chat</b><span id="sub"><i id="pt"></i><span id="subTxt"></span></span></div>
+    <button class="ib" id="btSino" aria-label="Notificações" title="Notificações" hidden>🔔</button>
     <button class="ib" id="btPessoas" aria-label="Quem está no chat" title="Pessoas">👥</button>
   </header>
   <div id="estado" role="status" hidden></div>
+  <div id="dica" hidden><span id="dicaTxt"></span><button id="dicaSim">Ativar</button><button id="dicaNao" class="nao">Agora não</button></div>
   <div id="fixas" hidden></div>
   <main id="lista" role="log" aria-live="polite" aria-label="Mensagens"></main>
   <button id="novas" hidden>↓ Mensagens novas</button>
@@ -109,9 +119,8 @@
 <script>
 (function () {
   'use strict';
-  var PROD = 'https://video-team.avkvideoshare.workers.dev';
   var local = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
-  var API = (local && new URLSearchParams(location.search).get('api')) || PROD;
+  var API = location.origin + '/chat';       // o chat e a pagina vivem no mesmo servidor
   var KEY = 'vt.chat.k';
   var HB = (local && +new URLSearchParams(location.search).get('hb')) || 15000;   // batimento: ping de HB em HB ms; sem resposta em 2,7×HB = ligacao morta
 
@@ -132,6 +141,7 @@
 
   function cartao(tit, txt, semSpin) { $('app').hidden = true; $('cartao').hidden = false; $('cTit').textContent = tit; $('cTxt').textContent = txt || ''; $('spin').hidden = !!semSpin; }
 
+  if (/^[a-f0-9]{40}$/.test(token)) $('mf').href = API + '/manifest.webmanifest?k=' + token;
   if (!/^[a-f0-9]{40}$/.test(token)) { cartao('Falta o teu link', 'Abre o link pessoal que a régie te enviou. Cada pessoa tem o seu.', true); return; }
 
   var eu = null, membros = {}, msgs = [], ultimoId = 0, ws = null, tentativas = 0, online = {}, ligado = false, fechado = false;
@@ -205,8 +215,8 @@
           var ja = bal.querySelector('.acoes');
           if (ja) { ja.remove(); return; }
           var ac = document.createElement('div'); ac.className = 'acoes';
-          var b1 = document.createElement('button'); b1.textContent = m.fixa ? 'Soltar' : 'Fixar'; b1.onclick = function () { http('/api/chat/fixar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: m.id, fixa: m.fixa ? 0 : 1 }) }); };
-          var b2 = document.createElement('button'); b2.textContent = 'Apagar'; b2.onclick = function () { if (confirm('Apagar esta mensagem para todos?')) http('/api/chat/apagar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: m.id }) }); };
+          var b1 = document.createElement('button'); b1.textContent = m.fixa ? 'Soltar' : 'Fixar'; b1.onclick = function () { http('/api/fixar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: m.id, fixa: m.fixa ? 0 : 1 }) }); };
+          var b2 = document.createElement('button'); b2.textContent = 'Apagar'; b2.onclick = function () { if (confirm('Apagar esta mensagem para todos?')) http('/api/apagar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: m.id }) }); };
           ac.appendChild(b1); ac.appendChild(b2); bal.appendChild(ac);
         });
       }
@@ -261,7 +271,7 @@
 
   // ---------------------------------------------------------------- ligacao em tempo real
   function sincronizar() {
-    return http('/api/chat/msgs?depois=' + ultimoId).then(function (r) {
+    return http('/api/msgs?depois=' + ultimoId).then(function (r) {
       if (r.s === 401) return invalido();
       if (r.s !== 200 || !r.j) return;
       var novas = juntar(r.j.msgs || []);
@@ -273,7 +283,7 @@
   function ligar() {
     if (fechado) return;
     try { if (ws) ws.close(); } catch (e) {}
-    var url = API.replace(/^http/, 'ws') + '/api/chat/ws?k=' + token;
+    var url = API.replace(/^http/, 'ws') + '/api/ws?k=' + token;
     try { ws = new WebSocket(url); } catch (e) { retomar(); return; }
     var w = ws;
     w.onopen = function () { lastRx = Date.now(); tentativas = 0; ligado = true; estado(''); subtitulo(); sincronizar(); };
@@ -330,7 +340,7 @@
     var cid = 'c' + (++cidN) + Date.now();
     m.cid = cid; pendentes[cid] = m;
     if (ws && ws.readyState === 1) { try { ws.send(JSON.stringify({ t: 'msg', texto: texto, aviso: aviso, cid: cid })); return; } catch (e) {} }
-    http('/api/chat/enviar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texto: texto, aviso: aviso }) }).then(function (r) {
+    http('/api/enviar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texto: texto, aviso: aviso }) }).then(function (r) {
       delete pendentes[cid];
       if (r.s === 401) return invalido();
       if (r.s === 200 && r.j && r.j.m) { juntar([r.j.m]); desenhar(); paraOFim(); }
@@ -374,8 +384,46 @@
   $('folha').addEventListener('click', function (e) { if (e.target === $('folha')) $('folha').hidden = true; });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') $('folha').hidden = true; });
 
+  // ---------------------------------------------------------------- PWA: instalar e notificacoes
+  var IOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  function standalone() { return (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true; }
+  function pushSuportado() { return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; }
+  var instalar = null, servidorPush = false;
+  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); instalar = e; mostrarDica(); });
+  if ('serviceWorker' in navigator) { try { navigator.serviceWorker.register(API + '/sw', { scope: API + '/' }).catch(function () {}); } catch (e) {} }
+
+  function urlB64(b) { var p = '='.repeat((4 - b.length % 4) % 4), s = (b + p).replace(/-/g, '+').replace(/_/g, '/'), raw = atob(s), out = new Uint8Array(raw.length); for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i); return out; }
+  function subscrever() {          // so depois de a pessoa ter dado a permissao
+    return navigator.serviceWorker.ready.then(function (reg) {
+      return http('/api/push/chave').then(function (r) {
+        if (!r.j || !r.j.chave) throw new Error('push');
+        return reg.pushManager.getSubscription().then(function (sub) { return sub || reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64(r.j.chave) }); });
+      }).then(function (sub) { return http('/api/push/inscrever', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscription: sub.toJSON() }) }); });
+    });
+  }
+  function ativarNotificacoes() {
+    return Notification.requestPermission().then(function (p) { if (p !== 'granted') throw new Error(p); return subscrever(); }).then(function () { guardar('vt.chat.dica', '1'); mostrarDica(); });
+  }
+  function mostrarDica() {
+    var d = $('dica'), t = $('dicaTxt'), sim = $('dicaSim'), nao = $('dicaNao'), sino = $('btSino');
+    var feita = ler('vt.chat.dica') === '1';
+    var pode = pushSuportado() && servidorPush;
+    sino.hidden = !pode || Notification.permission === 'denied';
+    sino.classList.toggle('on', pode && Notification.permission === 'granted');
+    d.hidden = true;
+    if (feita && !instalar) return;
+    if (IOS && !standalone()) { t.textContent = 'Para receber notificações no iPhone: toca em Partilhar (⬆︎) → «Adicionar ao ecrã principal» e abre o chat por esse ícone.'; sim.hidden = true; d.hidden = false; return; }
+    if (pode && Notification.permission === 'default') { t.textContent = 'Queres ser avisado quando chegar uma mensagem?'; sim.textContent = 'Ativar'; sim.hidden = false; sim.onclick = function () { ativarNotificacoes().catch(function () { d.hidden = true; }); }; d.hidden = false; return; }
+    if (instalar && !standalone()) { t.textContent = 'Instala o chat no ecrã principal para o abrires como uma app.'; sim.textContent = 'Instalar'; sim.hidden = false; sim.onclick = function () { instalar.prompt(); instalar = null; d.hidden = true; }; d.hidden = false; }
+  }
+  $('dicaNao').onclick = function () { guardar('vt.chat.dica', '1'); $('dica').hidden = true; };
+  $('btSino').onclick = function () {
+    if (Notification.permission === 'granted') { alert('As notificações já estão ativas neste aparelho.'); return; }
+    ativarNotificacoes().catch(function () { alert('As notificações ficaram bloqueadas. Para as ativar, abre as definições do navegador para este site.'); });
+  };
+
   // ---------------------------------------------------------------- arranque
-  http('/api/chat/sala').then(function (r) {
+  http('/api/sala').then(function (r) {
     if (r.s === 401 || r.s === 404) return invalido();
     if (r.s !== 200 || !r.j) { cartao('Não consegui abrir o chat', 'Verifica a ligação à internet e tenta outra vez.', true); setTimeout(function () { location.reload(); }, 8000); return; }
     var s = r.j;
@@ -385,10 +433,13 @@
     $('evento').textContent = s.evento;
     $('cartao').hidden = true; $('app').hidden = false;
     $('modoAviso').hidden = eu.papel !== 'dono';
+    servidorPush = !!s.push;
     juntar(s.msgs || []);
     online = {}; (s.online || []).forEach(function (p) { online[p] = 1; });
     desenhar(); subtitulo(); paraOFim();
     ligar();
+    if (pushSuportado() && servidorPush && Notification.permission === 'granted') subscrever().catch(function () {});
+    mostrarDica();
   }).catch(function () { cartao('Sem ligação', 'Não consegui contactar o servidor. A tentar outra vez…'); setTimeout(function () { location.reload(); }, 6000); });
 })();
 </script>
