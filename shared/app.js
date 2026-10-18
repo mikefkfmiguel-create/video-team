@@ -69,7 +69,8 @@
       var pw = document.getElementById('pw');
       if (j.error) { pw.innerHTML = '<p class="empty">' + esc(j.error) + '</p>'; return; }
       document.title = (j.event || j.label || 'Escala do evento') + ' · Video Team';
-      var crew = j.crew || [];
+      // «Vitor Cabral*_12H»: os sufixos do 7Eventos (turno, asterisco) nao se mostram a quem recebe o link
+      var crew = (j.crew || []).map(function (c) { return Object.assign({}, c, { name: String(c.name || '').replace(/\s*[_*].*$/, '').replace(/\s+/g, ' ').trim() || c.name }); });
       var allDays = j.days || [];
       var todayKey = keyOf(new Date());
       var pdfHtml = j.prop ? '<a class="pdf" href="' + esc(cfg.api + '/pdf/' + j.prop + '?k=' + encodeURIComponent(cfg.pin) + '&n=' + encodeURIComponent(j.event || j.label || '')) + '" target="_blank" rel="noopener"><span>PDF</span>Proposta técnica</a>' : '';
@@ -544,7 +545,7 @@
       var ctxSalas = function (pin) {
         document.getElementById('sheet').classList.remove('open');
         window.__vtSalas.abrir({
-          api: cfg.api || cfg.salasApi, pin: pin, sig: sig(e), titulo: e.event || ('OS ' + e.code), evento: e.event, code: e.code, anchor: state.dmy, webBase: cfg.webBase,
+          api: cfg.api || cfg.salasApi, pin: pin, sig: sig(e), titulo: e.event || ('OS ' + e.code), evento: e.event, code: e.code, anchor: state.dmy, webBase: cfg.webBase, ids: idsDoFiltro(e), filtroTxt: textoFiltro(),
           onAuthFail: cfg.api ? null : function () { store('vt.salaspin', ''); }
         });
       };
@@ -605,6 +606,19 @@
     return '<button class="pdf share" id="shareBtn"><span>LINK</span>Link só deste evento</button>';
   }
 
+  // as pessoas deste evento que estao no filtro do ecra (grupo, «so com marcacao», pesquisa): so essas aparecem no link
+  function idsDoFiltro(e) {
+    var s = sig(e), vis = {};
+    visiblePeople().forEach(function (p) { vis[p.id] = 1; });
+    var ids = [];
+    state.data.people.forEach(function (q) {
+      if (!vis[q.id]) return;
+      if (state.data.days.some(function (d) { return (q.cells[d] || []).some(function (x) { return sig(x) === s; }); })) ids.push(q.id);
+    });
+    return ids;
+  }
+  function textoFiltro() { var g = currentGroup(); return g === '*' ? 'todos os grupos' : g; }
+
   // copiar sem depender da API da area de transferencia (nao existe no WebView da app)
   function copyText(tx, done) {
     function viaExec() {
@@ -618,9 +632,10 @@
   }
 
   // o resultado vive no proprio painel (alert() nao existe na app Android)
-  function showShareResult(e, url) {
+  function showShareResult(e, url, nPessoas) {
     var msg = 'Escala do evento «' + (e.event || ('OS ' + e.code)) + '»: ' + url;
-    openSheet('<div class="sh-h" style="--h:' + hue(e.code) + '"><h3>Link só deste evento</h3><p>' + esc(e.event || ('OS ' + e.code)) + ' · quem o abrir só vê este evento e a sua equipa · válido 30 dias</p></div>' +
+    openSheet('<div class="sh-h" style="--h:' + hue(e.code) + '"><h3>Link só deste evento</h3><p>' + esc(e.event || ('OS ' + e.code)) + ' · quem o abrir só vê este evento · válido 30 dias</p></div>' +
+      '<p class="mut" style="margin-top:12px">Inclui só as <b>' + nPessoas + ' pessoas</b> do filtro atual (' + esc(textoFiltro()) + '). Para outras, muda o filtro e cria um link novo.</p>' +
       '<div class="mut" style="word-break:break-all;font-family:ui-monospace,Menlo,monospace;font-size:12px;margin:14px 0">' + esc(url) + '</div>' +
       '<button class="pdf share" id="shCopy"><span>COPIAR</span>Copiar o link</button>' +
       '<a class="pdf share" id="shWa" href="https://wa.me/?text=' + encodeURIComponent(msg) + '" target="_blank" rel="noopener" style="text-decoration:none"><span>WHATSAPP</span>Enviar para um grupo ou contacto</a>' +
@@ -636,12 +651,12 @@
       btn.disabled = true; var was = btn.innerHTML; btn.innerHTML = '<span>LINK</span>A gerar…';
       fetch((cfg.api || cfg.salasApi) + '/api/admin/share', {
         method: 'POST', headers: { 'X-PIN': pin, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: sig(e), label: e.event || ('OS ' + e.code), d: state.dmy })
+        body: JSON.stringify({ key: sig(e), label: e.event || ('OS ' + e.code), d: state.dmy, ids: idsDoFiltro(e) })
       }).then(function (r) { return r.json(); }).then(function (j) {
         btn.disabled = false; btn.innerHTML = was;
         if (!j.token) { if (!cfg.api) store('vt.salaspin', ''); btn.insertAdjacentHTML('afterend', '<div class="mut">' + esc(j.error || 'Não consegui criar o link.') + '</div>'); return; }
         var base = cfg.api ? location.origin + location.pathname : (cfg.webBase || 'https://mikefkfmiguel-create.github.io/video-team/');
-        showShareResult(e, base + '?p=' + j.token);
+        showShareResult(e, base + '?p=' + j.token, idsDoFiltro(e).length);
       }).catch(function () { btn.disabled = false; btn.innerHTML = was; btn.insertAdjacentHTML('afterend', '<div class="mut">Sem ligação ao servidor.</div>'); });
     };
     if (cfg.api) porFalar(cfg.pin); else withSalasPin(porFalar);

@@ -116,7 +116,7 @@
       if (S.linkMsg) return '<p class="note">' + esc(S.linkMsg) + '</p>';
       if (!S.linkUrl) return '';
       var msg = 'Escala do evento «' + (ctx.titulo || 'evento') + '»: ' + S.linkUrl;
-      return '<div class="ln" style="display:block"><div style="word-break:break-all;font-family:ui-monospace,Menlo,monospace;font-size:12px;margin:6px 0">' + esc(S.linkUrl) + '</div>' +
+      return '<div class="ln" style="display:block"><p class="note" style="margin:0 0 6px">Inclui só as ' + ((ctx.ids || []).length || 'todas as') + ' pessoas do filtro' + (ctx.filtroTxt ? ' (' + esc(ctx.filtroTxt) + ')' : '') + '.</p><div style="word-break:break-all;font-family:ui-monospace,Menlo,monospace;font-size:12px;margin:6px 0">' + esc(S.linkUrl) + '</div>' +
         '<button class="b" data-a="linkCopiar">' + (S.linkCopiado ? 'Copiado ✓' : 'Copiar o link') + '</button> <a class="b" href="https://wa.me/?text=' + encodeURIComponent(msg) + '" target="_blank" rel="noopener">Enviar por WhatsApp</a></div>';
     }
     function copiarTxt(tx, feito) {
@@ -488,7 +488,7 @@
       else if (a === 'linkEvento') {
         if (!d.link.publicado) { d.link.publicado = true; mudou(); }
         S.linkMsg = 'A criar o link…'; S.linkUrl = ''; paint();
-        H('/api/admin/share', { body: { key: ctx.sig, label: ctx.titulo || 'Evento', d: ctx.anchor } }).then(function (r) { return r.json(); }).then(function (j) {
+        H('/api/admin/share', { body: { key: ctx.sig, label: ctx.titulo || 'Evento', d: ctx.anchor, ids: ctx.ids } }).then(function (r) { return r.json(); }).then(function (j) {
           if (!j.token) { S.linkMsg = j.error || 'Não consegui criar o link.'; }
           else {
             var base = ctx.webBase || (/7eventos/i.test(location.hostname) ? 'https://mikefkfmiguel-create.github.io/video-team/' : location.origin + location.pathname);

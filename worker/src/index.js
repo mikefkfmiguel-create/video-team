@@ -251,7 +251,9 @@ async function handleAdmin(url, req, env, h, myRole) {
     const anchor = /^\d{2}-\d{2}-\d{4}$/.test(dRaw) ? dRaw : todayDMY();
     const token = randomToken();
     const now = Date.now();
-    const entry = { name: label, project: key, anchor, role: 'project', status: 'approved', requestedAt: now, approvedAt: now, expiresAt: now + PROJECT_TTL * 1000 };
+    // so aparecem as pessoas que estavam no filtro do dono quando criou o link (sem «ids», aparece toda a equipa do evento)
+    const ids = Array.isArray(body && body.ids) ? [...new Set(body.ids.map((x) => String(x).slice(0, 24)).filter(Boolean))].slice(0, 300) : [];
+    const entry = { name: label, project: key, anchor, role: 'project', status: 'approved', requestedAt: now, approvedAt: now, expiresAt: now + PROJECT_TTL * 1000, ...(ids.length ? { ids } : {}) };
     await env.FOTOS.put(`req:${token}`, JSON.stringify(entry), { expirationTtl: PROJECT_TTL });
     return json({ token }, 200, h);
   }
@@ -420,6 +422,7 @@ export default {
         const entry = await env.FOTOS.get(`req:${pin}`, 'json');
         const view = entry && (await projectView(env, entry));
         if (!view) return json({ error: 'este projeto ja nao tem marcações neste período' }, 404, h);
+        if (entry.ids) { const ok = new Set(entry.ids); view.crew = view.crew.filter((c) => ok.has(String(c.id))); }   // so o que o dono filtrou
         // sala/funcao so aparece se o dono ligou "publicado" (e so de quem esta na equipa)
         const pub = publicView(await loadDoc(env, entry.project), view.crew.map((c) => c.id));
         if (pub) view.salas = pub;
