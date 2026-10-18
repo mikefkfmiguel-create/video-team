@@ -418,8 +418,9 @@
       });
       h += '</div>';
       h += caixaSeguranca();
-      h += '<div class="caixa"><h4>Gerir o chat</h4><div class="nota">Válido até ' + new Date(d.expira).toLocaleDateString('pt-PT', { day: 'numeric', month: 'long' }) + ' · as mensagens apagam-se depois.</div>' +
-        '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="b" data-acao="maisPessoas">Acrescentar pessoas</button><button class="b perigo" data-acao="fechar">' + (S.conf === 'fechar' ? 'Tens a certeza? Toca outra vez (apaga tudo)' : 'Fechar o chat') + '</button></div></div>';
+      h += '<div class="caixa"><h4>Gerir o chat</h4><div class="nota"><b>Dura o tempo do evento:</b> até ' + new Date(d.expira).toLocaleDateString('pt-PT', { weekday: 'long', day: 'numeric', month: 'long' }) + ', às ' +
+        new Date(d.expira).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }) + '. Depois, o chat e todas as mensagens apagam-se sozinhos.</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="b" data-acao="prolonga">Prolongar 1 dia</button><button class="b" data-acao="maisPessoas">Acrescentar pessoas</button><button class="b perigo" data-acao="fechar">' + (S.conf === 'fechar' ? 'Tens a certeza? Toca outra vez (apaga tudo)' : 'Fechar o chat') + '</button></div></div>';
       var pe = porEnviar();
       h += '<div class="rodape"><span class="nota">' + (S.msgEnvio ? esc(S.msgEnvio) : (pe.length ? pe.length + ' por enviar · próxima: ' + esc(pe[0].name) : 'Todas as que têm telemóvel já foram abertas ✓')) + '</span>' +
         '<button class="b wa" data-acao="proxima"' + (pe.length ? '' : ' disabled') + '>WhatsApp: próxima pessoa</button></div>';
@@ -558,6 +559,7 @@
         }).catch(function () { S.aut.erro = 'Sem ligação ao servidor.'; desenhar(); });
         return;
       }
+      if (a === 'prolonga') { tratar(H('/prolongar', { key: ctx.sig, dias: 1 }), function (j) { S.doc = j; }); return; }
       if (a === 'convCria' || a === 'convAtiva' || a === 'convNovo') {
         if (a === 'convNovo' && conf !== 'convNovo') { pedeConfirmar('convNovo'); return; }
         var corpoC = { key: ctx.sig };

@@ -86,7 +86,7 @@ async def main():
         s, _ = await api('POST', '/chat/api/admin/criar', admin=SEGREDO, corpo={'key': KEY, 'membros': []})
         ok(s == 400, 'sem pessoas: 400')
         s, longe = await api('POST', '/chat/api/admin/criar', admin=SEGREDO, corpo={'key': 'os:1:Antigo', 'membros': [MEMBROS[0]], 'ate': '2001-01-01'})
-        ok(longe['expira'] > S.agora_ms() + 86400e3, 'prazo ja passado: nao expira logo')
+        ok(S.agora_ms() + 3600e3 < longe['expira'] < S.agora_ms() + 3 * 3600e3, 'prazo ja passado: ainda assim dura 2 horas (nao expira logo)')
 
         # ---- entrar
         ok((await api('GET', '/chat/api/sala', k='a' * 40))[0] == 401, 'link inventado: 401')
@@ -250,10 +250,24 @@ async def main():
         s, sn = await api('GET', '/chat/api/sala', k=nova['membros'][0]['token'])
         ok(sn['msgs'] == [] and nova['membros'][0]['token'] != tok['11'], 'sala nova: sem mensagens antigas e com links novos')
 
+        # ---- o chat dura o tempo do evento: acaba no fim do ultimo dia (23:59 de Lisboa)
+        import datetime as _dt
+        from zoneinfo import ZoneInfo as _Z
+        hoje = _dt.datetime.now(_Z('Europe/Lisbon')).date()
+        fim = _dt.datetime(hoje.year, hoje.month, hoje.day, 23, 59, 59, tzinfo=_Z('Europe/Lisbon')).timestamp() * 1000
+        s, ev = await api('POST', '/chat/api/admin/criar', admin=SEGREDO, corpo={'key': 'os:5:Hoje', 'label': 'Acaba hoje', 'ate': hoje.isoformat(), 'membros': [MEMBROS[0]]})
+        ok(abs(ev['expira'] - max(fim, S.agora_ms() + 2 * 3600e3)) < 2000, 'um evento que acaba hoje expira hoje as 23:59 (hora de Lisboa) ou daqui a 2 h, o que for mais tarde')
+        amanha = (hoje + _dt.timedelta(days=3)).isoformat()
+        s, ev3 = await api('POST', '/chat/api/admin/criar', admin=SEGREDO, corpo={'key': 'os:6:Tres', 'label': 'Tres dias', 'ate': amanha, 'membros': [MEMBROS[0]]})
+        fim3 = _dt.datetime.fromisoformat(amanha + 'T23:59:59').replace(tzinfo=_Z('Europe/Lisbon')).timestamp() * 1000
+        ok(abs(ev3['expira'] - fim3) < 2000, 'um evento de varios dias dura ate ao fim do ultimo dia (sem dias de folga)')
+        s, pro = await api('POST', '/chat/api/admin/prolongar', admin=SEGREDO, corpo={'key': 'os:6:Tres', 'dias': 1})
+        ok(abs(pro['expira'] - (fim3 + 86400e3)) < 2000, 'prolongar 1 dia empurra o fim um dia')
+        ok((await api('POST', '/chat/api/admin/prolongar', admin=SEGREDO, corpo={'key': 'nada'}))[0] == 404, 'prolongar uma sala que nao existe: 404')
+
         # ---- expirar
         chat.bd.x('UPDATE sala SET expira=? WHERE id=?', S.agora_ms() - 1000, nova['sala'])
         ok((await api('GET', '/chat/api/sala', k=nova['membros'][0]['token']))[0] == 401, 'passado o prazo o link deixa de entrar')
-        chat.bd.x('UPDATE sala SET expira=? WHERE id=?', S.agora_ms() - 3 * 86400e3, nova['sala'])
         ok(chat.limpar_expiradas() >= 1 and chat.bd.um('SELECT 1 FROM sala WHERE id=?', nova['sala']) is None, 'a limpeza apaga as salas expiradas')
         ok('912' not in open(os.path.join(pasta, 'chat.db'), 'rb').read().decode('latin-1'), 'a base de dados nao tem telefones')
 

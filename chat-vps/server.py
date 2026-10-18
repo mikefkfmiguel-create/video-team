@@ -32,7 +32,7 @@ DIA = 24 * 3600
 MAX_TEXTO = 2000
 HISTORICO = 150               # mensagens enviadas a quem entra
 MAX_MENSAGENS = 5000          # por sala
-GRACA = 7 * DIA               # a sala vive ate 7 dias depois do ultimo dia do evento
+MINIMO = 2 * 3600             # nunca expira em menos de 2 horas (evento a acabar hoje, data enganada...)
 TTL_PADRAO = 30 * DIA
 TTL_MAX = 120 * DIA
 MAX_MEMBROS = 150
@@ -60,15 +60,21 @@ def id_da_sala(key):
 
 
 def calc_expira(ate, agora):
-    t = agora + TTL_PADRAO * 1000
+    """O chat dura o tempo do evento: ate ao fim do ULTIMO dia (23:59 hora de Lisboa). Depois apaga-se tudo sozinho."""
+    t = agora + TTL_PADRAO * 1000                      # sem data: 30 dias
     if isinstance(ate, str) and re.match(r'^\d{4}-\d{2}-\d{2}$', ate):
         try:
-            import calendar
             y, m, d = (int(x) for x in ate.split('-'))
-            t = calendar.timegm((y, m, d, 23, 59, 59)) * 1000 + GRACA * 1000
+            try:
+                from datetime import datetime
+                from zoneinfo import ZoneInfo
+                t = int(datetime(y, m, d, 23, 59, 59, tzinfo=ZoneInfo('Europe/Lisbon')).timestamp() * 1000)
+            except Exception:                           # sem base de fusos horarios: UTC (diferenca de 1 hora no verao)
+                import calendar
+                t = calendar.timegm((y, m, d, 23, 59, 59)) * 1000
         except (ValueError, OverflowError):
             pass
-    return max(agora + 2 * DIA * 1000, min(t, agora + TTL_MAX * 1000))
+    return max(agora + MINIMO * 1000, min(t, agora + TTL_MAX * 1000))
 
 
 # ---------------------------------------------------------------- base de dados
@@ -257,8 +263,7 @@ class Chat:
 
     # ---- limpeza
     def limpar_expiradas(self):
-        limite = agora_ms() - 24 * 3600 * 1000
-        ids = [r['id'] for r in self.bd.q('SELECT id FROM sala WHERE expira < ?', limite)]
+        ids = [r['id'] for r in self.bd.q('SELECT id FROM sala WHERE expira < ?', agora_ms())]     # acabou o evento: apaga-se tudo
         for i in ids:
             self.bd.x('DELETE FROM push WHERE token IN (SELECT token FROM membro WHERE sala=?)', i)
             self.bd.x('DELETE FROM sala WHERE id=?', i)
@@ -418,6 +423,23 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
             chat.bd.x('INSERT OR REPLACE INTO convite (sala, token, ativo, criado) VALUES (?,?,?,?)', sala, novo_token(), ativo, agora_ms())   # token novo: o link antigo deixa de servir
         else:
             chat.bd.x('UPDATE convite SET ativo=? WHERE sala=?', ativo, sala)
+        return json_resp(vista_dono(chat.bd, sala))
+
+    @r.post(P + '/api/admin/prolongar')
+    async def admin_prolongar(req):
+        chat.exige_admin(req)
+        b = await ler_json(req)
+        sala = id_da_sala(limpa(b.get('key'), 300))
+        s_ = chat.bd.um('SELECT expira FROM sala WHERE id=?', sala)
+        if not s_:
+            return json_resp({'error': 'nao encontrado'}, 404)
+        try:
+            dias = max(1, min(30, int(b.get('dias') or 1)))
+        except (TypeError, ValueError):
+            dias = 1
+        agora = agora_ms()
+        nova = min(max(s_['expira'], agora) + dias * DIA * 1000, agora + TTL_MAX * 1000)
+        chat.bd.x('UPDATE sala SET expira=? WHERE id=?', nova, sala)
         return json_resp(vista_dono(chat.bd, sala))
 
     @r.post(P + '/api/admin/libertar')
@@ -618,7 +640,7 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
                     chat.limpar_expiradas()
                 except Exception:
                     log.exception('limpeza')
-                await asyncio.sleep(1800)
+                await asyncio.sleep(600)
         t = asyncio.ensure_future(laco())
         yield
         t.cancel()

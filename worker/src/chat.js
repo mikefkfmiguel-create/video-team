@@ -2,7 +2,7 @@
 // Este Worker so faz de ponte para o DONO: confere a chave do dono (VT_PIN_ADMIN, em index.js) e reencaminha criar/ver/remover/fechar
 // para o servidor do chat com o segredo CHAT_SECRET (so o Worker e o VPS o conhecem). Nunca guarda mensagens, links nem contactos.
 
-const CAMINHOS = { '/criar': 'POST', '/remover': 'POST', '/fechar': 'POST', '/convite': 'POST', '/libertar': 'POST' };
+const CAMINHOS = { '/criar': 'POST', '/remover': 'POST', '/fechar': 'POST', '/convite': 'POST', '/libertar': 'POST', '/prolongar': 'POST' };
 
 export async function handleChatAdmin(url, req, env, h, { json }) {
   if (!env.CHAT_URL || !env.CHAT_SECRET) return json({ error: 'o chat ainda nao esta configurado neste servidor' }, 503, h);
