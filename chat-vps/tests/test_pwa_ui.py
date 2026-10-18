@@ -155,6 +155,38 @@ try:
         ana.wait_for_function("!document.getElementById('lista').innerText.includes('Escala: https')", timeout=8000)
         ok(True, 'apagada: some da conversa de todos')
         ok(ana.locator('.mn').count() == 0, 'quem nao e regie nao tem o botao ⋯')
+        # ---- fotos: o telemovel reduz a imagem antes de enviar
+        import struct
+        import zlib
+
+        def png(w, h):
+            def chunk(t, d):
+                return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+            linha = b'\x00' + bytes([200, 60, 40]) * w
+            return b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(linha * h)) + chunk(b'IEND', b'')
+        foto_png = os.path.join(pasta, 'grande.png')
+        open(foto_png, 'wb').write(png(3200, 2400))
+        ok(ana.is_visible('#camara'), 'a Ana tem o botao da camara')
+        ana.fill('#texto', 'Cabo partido no palco')
+        ana.set_input_files('#ficheiroFoto', foto_png)
+        ana.wait_for_selector('.linha.eu .foto img', timeout=15000)
+        regie.wait_for_selector('.linha:not(.eu) .foto img', timeout=15000)
+        regie.wait_for_function("(() => { const i = document.querySelector('.foto img'); return i && i.complete && i.naturalWidth > 0; })()", timeout=10000)
+        ok('Cabo partido' in regie.inner_text('#lista'), 'a regie ve a foto (miniatura) e a legenda em tempo real')
+        con2 = sqlite3.connect(os.path.join(pasta, 'chat.db'))
+        fb = con2.execute('SELECT foto_bytes, foto_w, foto_h FROM msg WHERE foto IS NOT NULL').fetchone()
+        ok(fb and fb[1] == 1600 and fb[2] == 1200 and fb[0] < 400_000, 'a foto de 3200x2400 foi reduzida no telemovel para 1600x1200 e pesa %s KB (com miniatura)' % (fb and fb[0] // 1024))
+        regie.locator('.foto').first.click()
+        regie.wait_for_selector('#grande:not([hidden])', timeout=5000)
+        regie.wait_for_function("(() => { const i = document.getElementById('grandeImg'); return i.complete && i.naturalWidth === 1600; })()", timeout=10000)
+        ok(True, 'tocar na foto abre-a grande (1600 px)')
+        regie.click('#fechaGrande')
+        ok(regie.is_hidden('#grande'), 'e fecha')
+        admin('/chat/api/admin/tipo', {'key': KEY, 'id': '2', 'tipo': 'leitura'})
+        rui.wait_for_function("document.getElementById('camara').hidden", timeout=8000)
+        ok(rui.is_hidden('#camara') and rui.is_disabled('#texto'), 'quem passa a «so leitura» perde o botao da camara em direto')
+        admin('/chat/api/admin/tipo', {'key': KEY, 'id': '2', 'tipo': 'participante'})
+        rui.wait_for_function("!document.getElementById('camara').hidden", timeout=8000)
         ana.click('#btPessoas')
         ok(ana.locator('#pessoas .pessoa').count() == 3, 'lista de pessoas')
         if SHOT:

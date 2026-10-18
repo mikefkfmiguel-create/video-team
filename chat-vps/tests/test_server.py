@@ -340,6 +340,69 @@ async def main():
         s_, nvs = await api('GET', '/chat/api/admin/eventos?depois=%d' % ultimo_id, admin=SEGREDO)
         ok(nvs['eventos'] == [], 'acrescentar pessoas a uma sala que ja existe nao conta como sala criada')
 
+        # ---- fotos (ja reduzidas pelo telemovel): ficheiros no disco, limites, permissoes, apagadas com a sala
+        def jpeg(n):
+            return b'\xff\xd8\xff\xe0' + b'J' * (n - 6) + b'\xff\xd9'
+
+        async def enviar_foto(k, grande, mini, texto='', w=800, h=600):
+            fd = aiohttp.FormData()
+            fd.add_field('texto', texto)
+            fd.add_field('w', str(w))
+            fd.add_field('h', str(h))
+            fd.add_field('foto', grande, filename='f.jpg', content_type='image/jpeg')
+            fd.add_field('mini', mini, filename='m.jpg', content_type='image/jpeg')
+            async with http.post(B + '/chat/api/foto', headers={'X-Chat': k} if k else {}, data=fd) as r:
+                try:
+                    j = await r.json()
+                except Exception:
+                    j = None
+                return r.status, j
+
+        async def ver_foto(k, fid, mini=False):
+            async with http.get(B + '/chat/api/foto/' + fid + ('?t=1' if mini else ''), headers={'X-Chat': k} if k else {}) as r:
+                return r.status, await r.read(), r.headers.get('Content-Type')
+        ok((await enviar_foto(None, jpeg(5000), jpeg(900)))[0] == 401, 'foto sem link: 401')
+        s, f1 = await enviar_foto(tok['13'], jpeg(300_000), jpeg(30_000), 'Cabo partido no palco', 1600, 900)
+        ok(s == 200 and f1['m']['foto'] and len(f1['m']['foto']) == 16 and f1['m']['texto'] == 'Cabo partido no palco' and f1['m']['foto_w'] == 1600, 'enviar foto com legenda')
+        fid = f1['m']['foto']
+        pasta_f = os.path.join(pasta, 'fotos', S.id_da_sala(KEY))
+        ok(os.path.exists(os.path.join(pasta_f, fid + '.jpg')) and os.path.exists(os.path.join(pasta_f, fid + '_t.jpg')), 'a foto e a miniatura ficam em ficheiros (nao na base de dados)')
+        ok(chat.bd.um('SELECT COUNT(*) AS n FROM msg WHERE foto IS NOT NULL')['n'] == 1 and os.path.getsize(os.path.join(pasta, 'chat.db')) < 2_000_000, 'a base de dados so guarda a referencia')
+        s, corpo_f, ct = await ver_foto(tok['12'], fid)
+        ok(s == 200 and ct == 'image/jpeg' and len(corpo_f) == 300_000, 'outro membro da sala ve a foto grande')
+        s, corpo_t, _ = await ver_foto(tok['12'], fid, True)
+        ok(s == 200 and len(corpo_t) == 30_000, '...e a miniatura')
+        ok((await ver_foto(None, fid))[0] == 401, 'sem link nao se ve a foto')
+        ok((await ver_foto(longe_tok := (await api('POST', '/chat/api/admin/criar', admin=SEGREDO, corpo={'key': 'os:77:Outra', 'membros': [MEMBROS[0]]}))[1]['membros'][0]['token'], fid))[0] == 404, 'um link de outra sala nao ve a foto')
+        ok((await ver_foto(tok['12'], '../../chat.db'))[0] in (404, 405), 'o nome da foto nao deixa sair da pasta')
+        s, ls2 = await api('GET', '/chat/api/msgs?depois=0', k=tok['12'])
+        ok(any(x.get('foto') == fid for x in ls2['msgs']), 'a foto aparece na lista de mensagens')
+        ok((await enviar_foto(tok['12'], b'GIF89a' + b'0' * 500, jpeg(900)))[0] == 400, 'so JPEG: outro formato e recusado')
+        ok((await enviar_foto(tok['12'], jpeg(S.FOTO_MAX + 1000), jpeg(900)))[0] == 413, 'foto grande demais: 413')
+        ok((await enviar_foto(tok['12'], jpeg(5000), jpeg(S.MINI_MAX + 1000)))[0] == 413, 'miniatura grande demais: 413')
+        await api('POST', '/chat/api/admin/tipo', admin=SEGREDO, corpo={'key': KEY, 'id': '12', 'tipo': 'leitura'})
+        ok((await enviar_foto(tok['12'], jpeg(5000), jpeg(900)))[0] == 403, 'quem so le nao envia fotos (403)')
+        ok((await ver_foto(tok['12'], fid))[0] == 200, '...mas ve as fotos dos outros')
+        await api('POST', '/chat/api/admin/tipo', admin=SEGREDO, corpo={'key': KEY, 'id': '12', 'tipo': 'participante'})
+        # limite por pessoa e por hora
+        res = []
+        for _ in range(S.FOTOS_HORA + 2):
+            res.append((await enviar_foto(tok['13'], jpeg(2000), jpeg(500)))[0])
+        ok(res.count(429) >= 1 and res[0] == 200, 'limite de fotos por pessoa e por hora (429)')
+        # apagar uma mensagem com foto apaga os ficheiros
+        s, f2 = await enviar_foto(tok['12'], jpeg(4000), jpeg(800))
+        fid2 = f2['m']['foto']
+        ok(os.path.exists(os.path.join(pasta_f, fid2 + '.jpg')), 'segunda foto guardada')
+        await api('POST', '/chat/api/apagar', k=c['dono']['token'], corpo={'id': f2['m']['id']})
+        ok(not os.path.exists(os.path.join(pasta_f, fid2 + '.jpg')) and not os.path.exists(os.path.join(pasta_f, fid2 + '_t.jpg')), 'apagar a mensagem apaga os ficheiros da foto')
+        ok((await ver_foto(tok['13'], fid2))[0] == 404, '...e a foto deixa de abrir')
+        # tecto de fotos por sala
+        chat.bd.x('UPDATE msg SET foto_bytes=? WHERE foto=?', S.SALA_FOTOS_MAX, fid)
+        ok((await enviar_foto(tok['13'], jpeg(2000), jpeg(500)))[0] in (413, 429), 'sala cheia: recusa mais fotos')
+        chat.bd.x('UPDATE msg SET foto_bytes=? WHERE foto=?', 330_000, fid)
+        s, met = await api('GET', '/chat/api/admin/metricas', admin=SEGREDO)
+        ok(met['fotos'] >= 1 and met['fotos_bytes'] >= 330_000, 'as metricas contam as fotos e o seu peso')
+
         # ---- retirar / fechar
         fechou = []
 

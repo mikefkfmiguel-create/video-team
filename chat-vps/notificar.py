@@ -65,6 +65,7 @@ def compor(e):
               'O que a sala teve',
               '- Pessoas: %s (entraram %s · de fora %s · gestores %s)' % (d.get('membros', '?'), d.get('entraram', '?'), d.get('externos', 0), d.get('gestores', 0)),
               '- Mensagens: %s (%s de texto)' % (d.get('mensagens', '?'), mb(d.get('texto_bytes'))),
+              '- Fotos: %s (%s)' % (d.get('fotos', 0), mb(d.get('fotos_bytes'))),
               '- Pico de pessoas ligadas ao mesmo tempo: %s' % d.get('pico_ws', '?'),
               '- Notificações enviadas: %s (aparelhos com notificações: %s)' % (d.get('pushes', '?'), d.get('push_subscricoes', '?')),
               '- Espaço libertado (estimado): %s' % mb(d.get('espaco_estimado_bytes'))]

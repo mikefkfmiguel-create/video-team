@@ -38,6 +38,11 @@ TTL_MAX = 120 * DIA
 MAX_MEMBROS = 150
 RITMO_N, RITMO_S = 15, 30     # 15 mensagens por 30 s por pessoa
 TOKEN_RE = re.compile(r'^[a-f0-9]{40}$')
+FOTO_RE = re.compile(r'^[a-f0-9]{16}$')
+FOTO_MAX = 1_500_000                     # a foto, ja reduzida pelo telemovel (1600 px, JPEG): perto de 0,3 MB
+MINI_MAX = 150_000                       # a miniatura (360 px): perto de 30 KB
+FOTOS_HORA = 20                          # fotos por pessoa por hora
+SALA_FOTOS_MAX = 400 * 1024 * 1024       # tecto de fotos por sala
 TIPOS = ('participante', 'leitura', 'gestor')   # participante le e escreve; leitura so le; gestor tambem trata dos participantes de fora e das mensagens
 log = logging.getLogger('vtchat')
 # o Web Push (py_vapid, modo estrito) so aceita «mailto:». E um contacto tecnico para os servicos de push (Google, Apple, Mozilla), nao o teu email pessoal.
@@ -102,6 +107,10 @@ class BD:
             self.c.execute("ALTER TABLE membro ADD COLUMN tipo TEXT NOT NULL DEFAULT 'participante'")
         if 'externo' not in cols:
             self.c.execute('ALTER TABLE membro ADD COLUMN externo INTEGER NOT NULL DEFAULT 0')   # 1 = nao vem da escala (acrescentado a mao)
+        mc = [c['name'] for c in self.c.execute('PRAGMA table_info(msg)').fetchall()]
+        for col, tipo in (('foto', 'TEXT'), ('foto_bytes', 'INTEGER NOT NULL DEFAULT 0'), ('foto_w', 'INTEGER NOT NULL DEFAULT 0'), ('foto_h', 'INTEGER NOT NULL DEFAULT 0')):
+            if col not in mc:
+                self.c.execute('ALTER TABLE msg ADD COLUMN %s %s' % (col, tipo))
         sc = [c['name'] for c in self.c.execute('PRAGMA table_info(sala)').fetchall()]
         if 'pico_ws' not in sc:
             self.c.execute('ALTER TABLE sala ADD COLUMN pico_ws INTEGER NOT NULL DEFAULT 0')
@@ -154,6 +163,8 @@ class Vapid:
 class Chat:
     def __init__(self, pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
         os.makedirs(pasta, exist_ok=True)
+        self.pasta = pasta
+        self.fotos_recentes = {}   # (sala, pid) -> instantes dos ultimos envios de fotos
         self.bd = BD(os.path.join(pasta, 'chat.db'))
         self.segredo = segredo or ''
         self.vapid = None
@@ -239,8 +250,9 @@ class Chat:
             'externos': n('SELECT COUNT(*) AS n FROM membro WHERE sala=? AND externo=1', sala), 'gestores': n("SELECT COUNT(*) AS n FROM membro WHERE sala=? AND tipo='gestor'", sala),
             'entraram': n('SELECT COUNT(*) AS n FROM membro WHERE sala=? AND reclamado=1', sala),
             'mensagens': msgs, 'texto_bytes': texto, 'pico_ws': s_['pico_ws'], 'pushes': s_['pushes'],
+            'fotos': n('SELECT COUNT(*) AS n FROM msg WHERE sala=? AND foto IS NOT NULL AND apagada=0', sala), 'fotos_bytes': n('SELECT COALESCE(SUM(foto_bytes),0) AS n FROM msg WHERE sala=? AND foto IS NOT NULL AND apagada=0', sala),
             'push_subscricoes': n('SELECT COUNT(*) AS n FROM push WHERE token IN (SELECT token FROM membro WHERE sala=?) OR token=(SELECT dono_token FROM sala WHERE id=?)', sala, sala),
-            'espaco_estimado_bytes': texto + msgs * 160 + membros * 220,       # o que a sala ocupa na base de dados (texto + linhas)
+            'espaco_estimado_bytes': texto + msgs * 160 + membros * 220 + n('SELECT COALESCE(SUM(foto_bytes),0) AS n FROM msg WHERE sala=? AND foto IS NOT NULL', sala),       # o que a sala ocupa na base de dados (texto + linhas)
             'db_bytes': db, 'rss_bytes': rss, 'disco_livre': livre,
             'salas_ativas': n('SELECT COUNT(*) AS n FROM sala'), 'ws_ativos': sum(len(v) for v in self.ws.values()),
         }
@@ -277,11 +289,26 @@ class Chat:
             'db_bytes': tam('chat.db'), 'wal_bytes': tam('chat.db-wal'),
             'salas': n('SELECT COUNT(*) AS n FROM sala'), 'membros': n('SELECT COUNT(*) AS n FROM membro'), 'externos': n('SELECT COUNT(*) AS n FROM membro WHERE externo=1'),
             'mensagens': n('SELECT COUNT(*) AS n FROM msg'), 'texto_bytes': n('SELECT COALESCE(SUM(LENGTH(texto)),0) AS n FROM msg'),
+            'fotos': n('SELECT COUNT(*) AS n FROM msg WHERE foto IS NOT NULL AND apagada=0'), 'fotos_bytes': n('SELECT COALESCE(SUM(foto_bytes),0) AS n FROM msg WHERE foto IS NOT NULL AND apagada=0'),
             'push_subscricoes': n('SELECT COUNT(*) AS n FROM push'), 'ws_ativos': sum(len(v) for v in self.ws.values()),
             'maior_sala': dict(maior) if maior else None,
-            'salas_lista': [dict(x) for x in bd.q('SELECT s.evento AS evento, s.expira AS expira, (SELECT COUNT(*) FROM membro WHERE sala=s.id) AS membros, (SELECT COUNT(*) FROM msg WHERE sala=s.id) AS msgs FROM sala s ORDER BY s.expira')],
+            'salas_lista': [dict(x) for x in bd.q('SELECT s.evento AS evento, s.expira AS expira, (SELECT COUNT(*) FROM membro WHERE sala=s.id) AS membros, (SELECT COUNT(*) FROM msg WHERE sala=s.id) AS msgs, (SELECT COUNT(*) FROM msg WHERE sala=s.id AND foto IS NOT NULL AND apagada=0) AS fotos, (SELECT COALESCE(SUM(foto_bytes),0) FROM msg WHERE sala=s.id AND foto IS NOT NULL AND apagada=0) AS fotos_bytes FROM sala s ORDER BY s.expira')],
             'dias': [dict(x) for x in bd.q('SELECT dia, pedidos, msgs, bytes_saida, ws_pico, erros FROM uso ORDER BY dia DESC LIMIT 30')],
         }
+
+    def pasta_fotos(self, sala):
+        return os.path.join(self.pasta, 'fotos', sala)
+
+    def apagar_ficheiros_foto(self, sala, fid):
+        for suf in ('.jpg', '_t.jpg'):
+            try:
+                os.remove(os.path.join(self.pasta_fotos(sala), fid + suf))
+            except OSError:
+                pass
+
+    def apagar_fotos_da_sala(self, sala):
+        import shutil
+        shutil.rmtree(self.pasta_fotos(sala), ignore_errors=True)
 
     @staticmethod
     def gere(q):
@@ -290,10 +317,10 @@ class Chat:
     # ---- mensagens
     def listar(self, sala, depois):
         if depois > 0:
-            msgs = self.bd.q('SELECT id,pid,nome,texto,ts,aviso,fixa FROM msg WHERE sala=? AND apagada=0 AND id>? ORDER BY id LIMIT 500', sala, depois)
+            msgs = self.bd.q('SELECT id,pid,nome,texto,ts,aviso,fixa,foto,foto_w,foto_h FROM msg WHERE sala=? AND apagada=0 AND id>? ORDER BY id LIMIT 500', sala, depois)
         else:
-            msgs = self.bd.q('SELECT * FROM (SELECT id,pid,nome,texto,ts,aviso,fixa FROM msg WHERE sala=? AND apagada=0 ORDER BY id DESC LIMIT ?) ORDER BY id', sala, HISTORICO)
-        fixas = self.bd.q('SELECT id,pid,nome,texto,ts,aviso,fixa FROM msg WHERE sala=? AND apagada=0 AND fixa=1 ORDER BY id DESC LIMIT 5', sala)
+            msgs = self.bd.q('SELECT * FROM (SELECT id,pid,nome,texto,ts,aviso,fixa,foto,foto_w,foto_h FROM msg WHERE sala=? AND apagada=0 ORDER BY id DESC LIMIT ?) ORDER BY id', sala, HISTORICO)
+        fixas = self.bd.q('SELECT id,pid,nome,texto,ts,aviso,fixa,foto,foto_w,foto_h FROM msg WHERE sala=? AND apagada=0 AND fixa=1 ORDER BY id DESC LIMIT 5', sala)
         return {'msgs': [dict(r) for r in msgs], 'fixas': [dict(r) for r in fixas]}
 
     def presentes(self, sala):
@@ -329,8 +356,37 @@ class Chat:
         self.contar(msgs=1)
         total = self.bd.um('SELECT COUNT(*) AS n FROM msg WHERE sala=?', q['sala'])['n']
         if total > MAX_MENSAGENS:
+            for velho in self.bd.q('SELECT foto FROM msg WHERE id IN (SELECT id FROM msg WHERE sala=? ORDER BY id LIMIT ?) AND foto IS NOT NULL', q['sala'], total - MAX_MENSAGENS):
+                self.apagar_ficheiros_foto(q['sala'], velho['foto'])
             self.bd.x('DELETE FROM msg WHERE id IN (SELECT id FROM msg WHERE sala=? ORDER BY id LIMIT ?)', q['sala'], total - MAX_MENSAGENS)
-        return {'id': mid, 'pid': q['pid'], 'nome': q['nome'], 'texto': texto, 'ts': agora, 'aviso': e_aviso, 'fixa': e_aviso}, None, 200
+        return {'id': mid, 'pid': q['pid'], 'nome': q['nome'], 'texto': texto, 'ts': agora, 'aviso': e_aviso, 'fixa': e_aviso, 'foto': None}, None, 200
+
+    def guardar_foto(self, q, legenda, principal, mini, w, h):
+        """Guarda uma foto (ja reduzida pelo telemovel) e a mensagem dela. Devolve (mensagem, erro, estado)."""
+        if q.get('tipo') == 'leitura':
+            return None, 'leitura', 403
+        agora = agora_ms()
+        chave = (q['sala'], q['pid'])
+        lista = [t for t in self.fotos_recentes.get(chave, []) if agora - t < 3600 * 1000]
+        if len(lista) >= FOTOS_HORA:
+            return None, 'muitas fotos', 429
+        usado = self.bd.um('SELECT COALESCE(SUM(foto_bytes),0) AS n FROM msg WHERE sala=? AND foto IS NOT NULL', q['sala'])['n']
+        if usado + len(principal) + len(mini) > SALA_FOTOS_MAX:
+            return None, 'sala cheia', 413
+        lista.append(agora)
+        self.fotos_recentes[chave] = lista
+        fid = secrets.token_hex(8)
+        pasta = self.pasta_fotos(q['sala'])
+        os.makedirs(pasta, exist_ok=True)
+        with open(os.path.join(pasta, fid + '.jpg'), 'wb') as f:
+            f.write(principal)
+        with open(os.path.join(pasta, fid + '_t.jpg'), 'wb') as f:
+            f.write(mini)
+        legenda = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', str(legenda or '').replace('\r\n', '\n')).strip()[:500]
+        w, h = max(0, min(int(w or 0), 6000)), max(0, min(int(h or 0), 6000))
+        cur = self.bd.x('INSERT INTO msg (sala,pid,nome,texto,ts,aviso,fixa,foto,foto_bytes,foto_w,foto_h) VALUES (?,?,?,?,?,0,0,?,?,?,?)', q['sala'], q['pid'], q['nome'], legenda, agora, fid, len(principal) + len(mini), w, h)
+        self.contar(msgs=1)
+        return {'id': cur.lastrowid, 'pid': q['pid'], 'nome': q['nome'], 'texto': legenda, 'ts': agora, 'aviso': 0, 'fixa': 0, 'foto': fid, 'foto_w': w, 'foto_h': h}, None, 200
 
     async def enviar_msg(self, q, texto, aviso):
         m, erro, status = self.guardar(q, texto, aviso)
@@ -359,7 +415,7 @@ class Chat:
         alvo = [t for pid, t in tokens.items() if pid not in online and pid != m['pid']]
         if not alvo:
             return
-        texto = m['texto'].replace('\n', ' ')
+        texto = ('📷 ' + (m['texto'] or 'Foto')) if m.get('foto') else m['texto'].replace('\n', ' ')
         base = {'t': ('📌 ' if m['aviso'] else '') + s['evento'], 'b': '%s: %s' % (m['nome'], texto[:140] + ('…' if len(texto) > 140 else '')), 'g': sala}
         loop = asyncio.get_running_loop()
         for token in alvo:
@@ -382,6 +438,7 @@ class Chat:
                 self.evento('expirada', i, nome_['evento'], pasta)
             self.bd.x('DELETE FROM push WHERE token IN (SELECT token FROM membro WHERE sala=?)', i)
             self.bd.x('DELETE FROM sala WHERE id=?', i)
+            self.apagar_fotos_da_sala(i)
         if ids:
             log.info('salas expiradas apagadas: %d', len(ids))
         return len(ids)
@@ -649,6 +706,7 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
             await w.close(code=4001, message=b'sala fechada')
         chat.bd.x('DELETE FROM push WHERE token IN (SELECT token FROM membro WHERE sala=?) OR token IN (SELECT dono_token FROM sala WHERE id=?)', sala, sala)
         chat.bd.x('DELETE FROM sala WHERE id=?', sala)                         # apaga membros e mensagens em cascata
+        chat.apagar_fotos_da_sala(sala)
         chat.ws.pop(sala, None)
         return json_resp({'ok': True})
 
@@ -725,12 +783,80 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
         m, erro, status = await chat.enviar_msg(q, b.get('texto'), bool(b.get('aviso')))
         return json_resp({'error': erro} if erro else {'m': m}, status)
 
+    async def ler_parte(parte, limite):
+        buf = bytearray()
+        while True:
+            pedaco = await parte.read_chunk(64 * 1024)
+            if not pedaco:
+                return bytes(buf)
+            buf.extend(pedaco)
+            if len(buf) > limite:
+                return None
+
+    @r.post(P + '/api/foto')
+    async def foto_post(req):
+        q = await chat.exige(req)
+        if q.get('tipo') == 'leitura':
+            return json_resp({'error': 'leitura'}, 403)
+        try:
+            if int(req.headers.get('Content-Length') or 0) > FOTO_MAX + MINI_MAX + 20000:
+                return json_resp({'error': 'grande'}, 413)
+        except ValueError:
+            return json_resp({'error': 'pedido'}, 400)
+        campos = {}
+        try:
+            leitor = await req.multipart()
+            async for parte in leitor:
+                if parte.name == 'foto':
+                    campos['foto'] = await ler_parte(parte, FOTO_MAX)
+                elif parte.name == 'mini':
+                    campos['mini'] = await ler_parte(parte, MINI_MAX)
+                elif parte.name in ('texto', 'w', 'h'):
+                    campos[parte.name] = (await ler_parte(parte, 4000) or b'').decode('utf-8', 'replace')
+        except Exception:
+            return json_resp({'error': 'pedido'}, 400)
+        if campos.get('foto') is None or campos.get('mini') is None:
+            return json_resp({'error': 'grande'}, 413)
+        for k in ('foto', 'mini'):
+            b = campos.get(k) or b''
+            if len(b) < 100 or b[:3] != b'\xff\xd8\xff' or b'\xff\xd9' not in b[-64:]:     # so JPEG inteiro (o telemovel reencoda sempre)
+                return json_resp({'error': 'formato'}, 400)
+        try:
+            w, h = int(campos.get('w') or 0), int(campos.get('h') or 0)
+        except ValueError:
+            w = h = 0
+        m, erro, status = chat.guardar_foto(q, campos.get('texto'), campos['foto'], campos['mini'], w, h)
+        if erro:
+            return json_resp({'error': erro}, status)
+        await chat.difundir(q['sala'], {'t': 'msg', 'm': m})
+        t = asyncio.ensure_future(chat.push_ausentes(q['sala'], m))
+        chat.tarefas.add(t)
+        t.add_done_callback(chat.tarefas.discard)
+        return json_resp({'m': m})
+
+    @r.get(P + '/api/foto/{fid}')
+    async def foto_get(req):
+        q = await chat.exige(req)
+        fid = req.match_info['fid']
+        if not FOTO_RE.match(fid):
+            return json_resp({'error': 'nao encontrada'}, 404)
+        m = chat.bd.um('SELECT sala FROM msg WHERE foto=? AND apagada=0', fid)
+        if not m or m['sala'] != q['sala']:
+            return json_resp({'error': 'nao encontrada'}, 404)
+        caminho = os.path.join(chat.pasta_fotos(q['sala']), fid + ('_t' if req.query.get('t') else '') + '.jpg')
+        if not os.path.exists(caminho):
+            return json_resp({'error': 'nao encontrada'}, 404)
+        return web.FileResponse(caminho, headers={'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff'})
+
     @r.post(P + '/api/apagar')
     async def apagar(req):
         q = await chat.exige(req)
         if not chat.gere(q):
             return json_resp({'error': 'so a regie e os gestores'}, 403)
         mid = int((await ler_json(req)).get('id') or 0)
+        mf = chat.bd.um('SELECT foto FROM msg WHERE id=? AND sala=?', mid, q['sala'])
+        if mf and mf['foto']:
+            chat.apagar_ficheiros_foto(q['sala'], mf['foto'])
         chat.bd.x('UPDATE msg SET apagada=1, fixa=0 WHERE id=? AND sala=?', mid, q['sala'])
         await chat.difundir(q['sala'], {'t': 'del', 'id': mid})
         return json_resp({'ok': True})

@@ -60,6 +60,15 @@
   .eu .hora { color: inherit; opacity: .65; }
   .hora .mn { border: 0; background: none; color: inherit; font-size: 20px; line-height: 1; padding: 0 4px 0 10px; margin: -4px 0 -4px 0; cursor: pointer; vertical-align: middle; opacity: .8; min-width: 34px; min-height: 30px; }
   .bal.pend { opacity: .6; }
+  .bal .foto { display: block; margin: 2px 0 4px; max-width: 100%; width: 260px; aspect-ratio: 4 / 3; border-radius: 10px; background: var(--line); overflow: hidden; cursor: zoom-in; border: 0; padding: 0; }
+  .bal .foto img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  #camara { flex: none; width: 44px; height: 44px; border: 0; border-radius: 50%; background: var(--line); color: inherit; font-size: 20px; cursor: pointer; }
+  #camara:disabled { opacity: .45; }
+  #grande { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.92); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+  #grande[hidden] { display: none; }
+  #grande img { max-width: 100%; max-height: calc(100% - 70px); object-fit: contain; }
+  #grande .leg { color: #fff; font-size: 14px; padding: 10px 16px 0; max-width: 560px; text-align: center; }
+  #grande button { position: absolute; top: max(10px, env(safe-area-inset-top)); right: 12px; width: 44px; height: 44px; border: 0; border-radius: 50%; background: rgba(255,255,255,.18); color: #fff; font-size: 20px; cursor: pointer; }
   .bal.falhou { border-color: var(--err); }
   .acoes { display: flex; gap: 6px; margin-top: 6px; }
   .acoes button { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 8px; padding: 4px 10px; font: inherit; font-size: 12px; cursor: pointer; }
@@ -138,10 +147,14 @@
   <button id="novas" hidden>↓ Mensagens novas</button>
   <footer>
     <button id="modoAviso" aria-pressed="false" hidden title="A mensagem seguinte fica fixa no topo, para todos">📌 Fixar</button>
+    <button id="camara" type="button" aria-label="Enviar uma foto" title="Enviar uma foto" hidden>📷</button>
+    <input type="file" id="ficheiroFoto" accept="image/*" hidden>
     <textarea id="texto" rows="1" placeholder="Escreve uma mensagem" maxlength="2000" enterkeyhint="send" aria-label="Mensagem"></textarea>
     <button id="enviar" aria-label="Enviar">➤</button>
   </footer>
 </div>
+
+<div id="grande" hidden role="dialog" aria-modal="true" aria-label="Foto"><button id="fechaGrande" aria-label="Fechar">✕</button><img id="grandeImg" alt=""><div class="leg" id="grandeLeg"></div></div>
 
 <div id="folha" hidden role="dialog" aria-modal="true" aria-label="Pessoas">
   <div class="cx"><h2><span id="folhaTit">Pessoas</span><button id="fechaFolha" aria-label="Fechar">✕</button></h2><div id="gestaoBox" hidden></div><div id="pessoas"></div></div>
@@ -287,8 +300,17 @@
         if (m.pid === 'dono') { var em = document.createElement('em'); em.textContent = 'régie'; q.appendChild(em); }
         bal.appendChild(q);
       }
-      var t = document.createElement('div'); t.className = 'txt'; t.appendChild(conteudo(m.texto)); bal.appendChild(t);
-      var h = document.createElement('span'); h.className = 'hora'; h.textContent = m.falhou ? 'não enviada · toca para tentar de novo' : (m.pendente ? 'a enviar…' : hhmm(m.ts)); bal.appendChild(h);
+      if (m.foto) {
+        var fb = document.createElement('button'); fb.type = 'button'; fb.className = 'foto'; fb.setAttribute('aria-label', 'Abrir a foto');
+        if (m.foto_w > 0 && m.foto_h > 0) fb.style.aspectRatio = m.foto_w + ' / ' + m.foto_h;
+        var fi = document.createElement('img'); fi.alt = 'Foto de ' + m.nome; fi.loading = 'lazy'; fi.decoding = 'async';
+        fi.src = m.localUrl || (API + '/api/foto/' + m.foto + '?t=1&k=' + token);
+        fb.appendChild(fi);
+        fb.addEventListener('click', function (ev) { ev.stopPropagation(); if (!m.pendente) abrirFoto(m); });
+        bal.appendChild(fb);
+      }
+      if (m.texto) { var t = document.createElement('div'); t.className = 'txt'; t.appendChild(conteudo(m.texto)); bal.appendChild(t); }
+      var h = document.createElement('span'); h.className = 'hora'; h.textContent = m.falhou ? (m.ehFoto ? 'não enviada · toca para tirar' : 'não enviada · toca para tentar de novo') : (m.pendente ? 'a enviar…' : hhmm(m.ts)); bal.appendChild(h);
       if (m.falhou) bal.addEventListener('click', function () { reenviar(m); });
       if (eu && eu.gere && m.id && !m.pendente) {
         // o botao ⋯ abre os botoes sem depender de acertar fora de um link (tocar num link abre o menu do telemovel)
@@ -317,7 +339,7 @@
     fx.forEach(function (m) {
       var d = document.createElement('div'); d.className = 'fixa';
       var b = document.createElement('b'); b.textContent = '📌'; d.appendChild(b);
-      var t = document.createElement('div'); t.className = 'tx'; t.appendChild(conteudo(m.texto)); d.appendChild(t);
+      var t = document.createElement('div'); t.className = 'tx'; t.appendChild(conteudo(m.foto ? ('📷 ' + (m.texto || 'Foto')) : m.texto)); d.appendChild(t);
       el.appendChild(d);
     });
   }
@@ -328,7 +350,7 @@
     lista.forEach(function (m) {
       if (conhecidos[m.id]) return;
       // a minha mensagem otimista (pendente) e substituida pela real
-      if (eu && m.pid === eu.pid) { var i = msgs.findIndex(function (x) { return x.pendente && x.texto === m.texto; }); if (i >= 0) msgs.splice(i, 1); }
+      if (eu && m.pid === eu.pid) { var i = msgs.findIndex(function (x) { return x.pendente && (m.foto ? x.ehFoto : (!x.ehFoto && x.texto === m.texto)); }); if (i >= 0) msgs.splice(i, 1); }
       msgs.push(m); novas++;
       if (m.id > ultimoId) ultimoId = m.id;
     });
@@ -441,7 +463,7 @@
     enviarTexto(t, aviso, m);
     if (aviso) { modoAviso = false; $('modoAviso').setAttribute('aria-pressed', 'false'); }
   }
-  function reenviar(m) { m.falhou = false; m.pendente = true; desenhar(); enviarTexto(m.texto, !!m.aviso, m); }
+  function reenviar(m) { if (m.ehFoto) { msgs = msgs.filter(function (x) { return x !== m; }); desenhar(); return; } m.falhou = false; m.pendente = true; desenhar(); enviarTexto(m.texto, !!m.aviso, m); }
   $('enviar').onclick = enviar;
   $('texto').addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(hover: hover)').matches) { e.preventDefault(); enviar(); }
@@ -450,12 +472,76 @@
   $('texto').addEventListener('input', cresce);
   $('modoAviso').onclick = function () { modoAviso = !modoAviso; this.setAttribute('aria-pressed', String(modoAviso)); $('texto').focus(); };
 
+  // ---------------------------------------------------------------- fotos
+  // A foto e reduzida AQUI, no telemovel (1600 px, JPEG): ~0,3 MB em vez de varios MB, e o reencode apaga a localizacao (EXIF).
+  var FOTO_LADO = 1600, MINI_LADO = 360;
+  function carregarImagem(ficheiro) {
+    return new Promise(function (ok, mal) {
+      var url = URL.createObjectURL(ficheiro), im = new Image();
+      im.onload = function () { URL.revokeObjectURL(url); ok(im); };
+      im.onerror = function () { URL.revokeObjectURL(url); mal(new Error('imagem')); };
+      im.src = url;                         // os navegadores atuais aplicam a orientacao EXIF ao desenhar
+    });
+  }
+  function paraJpeg(im, lado, qual) {
+    var w = im.naturalWidth || im.width, h = im.naturalHeight || im.height, k = Math.min(1, lado / Math.max(w, h));
+    var cw = Math.max(1, Math.round(w * k)), ch = Math.max(1, Math.round(h * k));
+    var c = document.createElement('canvas'); c.width = cw; c.height = ch;
+    var g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cw, ch); g.drawImage(im, 0, 0, cw, ch);
+    return new Promise(function (ok, mal) { c.toBlob(function (b) { b ? ok({ blob: b, w: cw, h: ch }) : mal(new Error('jpeg')); }, 'image/jpeg', qual); });
+  }
+  function prepararFoto(ficheiro) {
+    return carregarImagem(ficheiro).then(function (im) {
+      return paraJpeg(im, FOTO_LADO, 0.8).then(function (g) {
+        return (g.blob.size > 1400000 ? paraJpeg(im, 1280, 0.7) : Promise.resolve(g));
+      }).then(function (g) { return paraJpeg(im, MINI_LADO, 0.7).then(function (mi) { return { grande: g, mini: mi }; }); });
+    });
+  }
+  function enviarFoto(ficheiro) {
+    if (!ficheiro || !/^image\//.test(ficheiro.type || 'image/')) return;
+    if (eu && eu.tipo === 'leitura') return;
+    var legenda = $('texto').value.trim();
+    var m = { id: 0, pid: eu.pid, nome: eu.nome, texto: legenda, ts: Date.now(), aviso: 0, fixa: 0, pendente: true, ehFoto: true, foto: 'local', localUrl: URL.createObjectURL(ficheiro) };
+    $('texto').value = ''; cresce(); msgs.push(m); desenhar(); paraOFim();
+    $('camara').disabled = true;
+    function falhar(txt) { m.pendente = false; m.falhou = true; $('camara').disabled = false; desenhar(); if (txt) { estado(txt, true); setTimeout(function () { estado(''); }, 5000); } }
+    prepararFoto(ficheiro).then(function (p) {
+      m.foto_w = p.grande.w; m.foto_h = p.grande.h;
+      var fd = new FormData();
+      fd.append('texto', legenda); fd.append('w', p.grande.w); fd.append('h', p.grande.h);
+      fd.append('foto', p.grande.blob, 'f.jpg'); fd.append('mini', p.mini.blob, 'm.jpg');
+      return http('/api/foto', { method: 'POST', body: fd });
+    }).then(function (r) {
+      $('camara').disabled = false;
+      if (r.s === 401) return invalido();
+      if (r.s === 200 && r.j && r.j.m) {
+        var i = msgs.indexOf(m); if (i >= 0) msgs.splice(i, 1);
+        try { URL.revokeObjectURL(m.localUrl); } catch (e) {}
+        juntar([r.j.m]); desenhar(); paraOFim();
+      } else {
+        var e = r.j && r.j.error;
+        falhar(e === 'muitas fotos' ? 'Já enviaste muitas fotos esta hora. Tenta daqui a pouco.' : e === 'sala cheia' ? 'Este chat já não aceita mais fotos.' : e === 'leitura' ? 'Só podes ler este chat.' : 'Não foi possível enviar a foto.');
+      }
+    }).catch(function () { falhar('Não foi possível enviar a foto.'); });
+  }
+  function abrirFoto(m) {
+    $('grandeImg').src = API + '/api/foto/' + m.foto + '?k=' + token;
+    $('grandeLeg').textContent = (m.texto ? m.texto + ' — ' : '') + m.nome + ' · ' + hhmm(m.ts);
+    $('grande').hidden = false;
+  }
+  function fecharFoto() { $('grande').hidden = true; $('grandeImg').removeAttribute('src'); }
+  $('fechaGrande').onclick = fecharFoto;
+  $('grande').addEventListener('click', function (ev) { if (ev.target === $('grande')) fecharFoto(); });
+  $('camara').onclick = function () { $('ficheiroFoto').click(); };
+  $('ficheiroFoto').addEventListener('change', function () { var f = this.files && this.files[0]; this.value = ''; if (f) enviarFoto(f); });
+
   // ---------------------------------------------------------------- pessoas
   // so leitura: le tudo mas nao escreve. Aplica-se ao entrar e sempre que o dono muda o tipo de alguem.
   function bloquear() {
     var ro = !!(eu && eu.tipo === 'leitura');
     $('texto').disabled = ro; $('texto').placeholder = ro ? 'Só podes ler este chat' : 'Escreve uma mensagem';
     $('enviar').hidden = ro;
+    $('camara').hidden = ro;
     $('modoAviso').hidden = !(eu && eu.gere);
     if (ro) { modoAviso = false; $('modoAviso').setAttribute('aria-pressed', 'false'); }
   }
