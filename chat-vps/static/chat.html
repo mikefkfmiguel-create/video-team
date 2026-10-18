@@ -58,6 +58,7 @@
   .txt a { color: inherit; text-decoration: underline; }
   .hora { display: block; text-align: right; font-size: 11px; color: var(--mut); margin-top: 1px; }
   .eu .hora { color: inherit; opacity: .65; }
+  .hora .mn { border: 0; background: none; color: inherit; font-size: 20px; line-height: 1; padding: 0 4px 0 10px; margin: -4px 0 -4px 0; cursor: pointer; vertical-align: middle; opacity: .8; min-width: 34px; min-height: 30px; }
   .bal.pend { opacity: .6; }
   .bal.falhou { border-color: var(--err); }
   .acoes { display: flex; gap: 6px; margin-top: 6px; }
@@ -276,15 +277,18 @@
       var h = document.createElement('span'); h.className = 'hora'; h.textContent = m.falhou ? 'não enviada · toca para tentar de novo' : (m.pendente ? 'a enviar…' : hhmm(m.ts)); bal.appendChild(h);
       if (m.falhou) bal.addEventListener('click', function () { reenviar(m); });
       if (eu && eu.papel === 'dono' && m.id && !m.pendente) {
-        bal.addEventListener('click', function (ev) {
-          if (ev.target.closest('a,button')) return;
+        // o botao ⋯ abre os botoes sem depender de acertar fora de um link (tocar num link abre o menu do telemovel)
+        var mn = document.createElement('button'); mn.className = 'mn'; mn.type = 'button'; mn.textContent = '⋯'; mn.setAttribute('aria-label', 'Opções da mensagem'); h.appendChild(mn);
+        var alternar = function () {
           var ja = bal.querySelector('.acoes');
           if (ja) { ja.remove(); return; }
           var ac = document.createElement('div'); ac.className = 'acoes';
           var b1 = document.createElement('button'); b1.textContent = m.fixa ? 'Soltar' : 'Fixar'; b1.onclick = function () { http('/api/fixar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: m.id, fixa: m.fixa ? 0 : 1 }) }); };
           var b2 = document.createElement('button'); b2.textContent = 'Apagar'; b2.onclick = function () { if (confirm('Apagar esta mensagem para todos?')) http('/api/apagar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: m.id }) }); };
           ac.appendChild(b1); ac.appendChild(b2); bal.appendChild(ac);
-        });
+        };
+        mn.addEventListener('click', function (ev) { ev.stopPropagation(); alternar(); });
+        bal.addEventListener('click', function (ev) { if (ev.target.closest('a,button')) return; alternar(); });
       }
       linha.appendChild(bal); listaEl.appendChild(linha);
     });

@@ -143,6 +143,18 @@ try:
         regie.click(".acoes button:has-text('Apagar')")
         ana.wait_for_function("!document.getElementById('lista').innerText.includes('Chego às 8h')", timeout=8000)
         ok(True, 'a regie apaga a mensagem da Ana e some do telemovel dela')
+        # mensagem com link: o botao ⋯ da regie abre as opcoes sem tocar no link
+        ana.fill('#texto', 'Escala: https://exemplo.pt/escala?p=abc')
+        ana.click('#enviar')
+        regie.wait_for_function("document.getElementById('lista').innerText.includes('Escala: https')", timeout=8000)
+        bal_link = regie.locator('.linha:not(.eu) .bal', has_text='Escala: https')
+        bal_link.locator('.mn').click()
+        ok(bal_link.locator('.acoes').count() == 1, 'o botao ⋯ abre «Fixar/Apagar» numa mensagem com link (sem tocar no link)')
+        regie.once('dialog', lambda d: d.accept())
+        bal_link.locator(".acoes button:has-text('Apagar')").click()
+        ana.wait_for_function("!document.getElementById('lista').innerText.includes('Escala: https')", timeout=8000)
+        ok(True, 'apagada: some da conversa de todos')
+        ok(ana.locator('.mn').count() == 0, 'quem nao e regie nao tem o botao ⋯')
         ana.click('#btPessoas')
         ok(ana.locator('#pessoas .pessoa').count() == 3, 'lista de pessoas')
         if SHOT:
