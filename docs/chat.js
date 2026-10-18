@@ -231,6 +231,7 @@
     crew.forEach(function (c) { (c.days || []).forEach(function (d) { if (d > ultimoDia) ultimoDia = d; }); });
     var temFiltro = crew.some(function (c) { return c.filtrado; }) && crew.some(function (c) { return !c.filtrado; });
     var S = {
+      autAtivo: null, aut: null,
       todos: !temFiltro, doc: null, vista: 'carregar', sel: {}, erro: '', ocupado: false, edita: null, nome: ls(LS_NOME, 'Mike'), msg: ls(LS_MSG, MSG_PADRAO),
       lista: ls(LS_G, []), manual: ls(LS_M, {}), enviados: ls(LS_ENV, {}), copiado: null, importou: ''
     };
@@ -293,6 +294,7 @@
       h += '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><button class="b" data-acao="marcaTodas">Marcar todas</button><button class="b" data-acao="marcaNenhuma">Desmarcar todas</button></div>';
       if (temFiltro) h += '<div style="margin-top:8px"><button class="b" data-acao="todos">' + (S.todos ? 'Mostrar só o filtro' : 'Mostrar toda a equipa do evento (+' + (crew.length - crew.filter(function (c) { return c.filtrado; }).length) + ')') + '</button></div>';
       h += '</div>';
+      h += caixaSeguranca();
       h += '<div class="caixa"><h4>O teu nome no chat</h4><input type="text" id="vtch-nome" maxlength="40" value="' + esc(S.nome) + '"><div class="nota">Aparece como «régie» ao lado do nome.</div></div>';
       h += '<div class="rodape"><span class="nota">' + n + ' pessoa' + (n === 1 ? '' : 's') + ' · ' + comTel + ' com telemóvel</span><span>' +
         (S.doc ? '<button class="b" data-acao="voltaGerir">Voltar</button> ' : '') + '<button class="b pri" data-acao="criar"' + (n && !S.ocupado ? '' : ' disabled') + '>' + (S.doc ? 'Acrescentar à sala' : 'Criar chat e preparar links') + '</button></span></div>';
@@ -306,6 +308,32 @@
         '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + (NAT ? '<button class="b pri" data-acao="sincNativo">Sincronizar com os contactos do telemóvel</button>' : '') + (PICKER && !NAT ? '<button class="b pri" data-acao="pickVarios">Escolher contactos no telemóvel</button>' : '') + '<button class="b' + (PICKER || NAT ? '' : ' pri') + '" data-acao="google">Importar do Google Contactos</button>' + '<button class="b" data-acao="importar">Importar ficheiro (.csv / .vcf)</button><input type="file" id="vtch-fich" accept=".csv,.vcf,text/csv,text/vcard,text/x-vcard" hidden>' +
         '<span class="nota" style="margin:0" role="status">' + (S.importou || (S.lista.length ? S.lista.length + ' contactos importados' : 'Ainda sem contactos importados')) + '</span>' +
         (S.lista.length ? '<button class="b perigo" data-acao="limpaContactos">Apagar importados</button>' : '') + '</div>' + (S.pedeCid || S.googleErro ? ajudaGoogle() : '') + '</div>';
+    }
+
+    // ---- seguranca: entrar como dono com o autenticador (em vez de decorar uma chave)
+    function caixaSeguranca() {
+      var a = S.aut, h = '<div class="caixa"><h4>Segurança · entrada do dono</h4>';
+      if (a && a.fase === 'codigos') {
+        h += '<div class="nota"><b>Autenticador ativo.</b> Guarda já estes 8 códigos de recuperação (cada um serve uma vez, para o caso de perderes o telemóvel). Não voltam a aparecer.</div>' +
+          '<div style="font-family:ui-monospace,Menlo,monospace;font-size:15px;line-height:1.7;margin:6px 0">' + a.lista.map(esc).join('<br>') + '</div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="b" data-acao="copiar" data-t="' + esc(a.lista.join('\n')) + '" data-k="rec">' + (S.copiado === 'rec' ? 'Copiado ✓' : 'Copiar os códigos') + '</button><button class="b pri" data-acao="autFecha">Já guardei</button></div>';
+      } else if (a && a.fase === 'preparar') {
+        h += '<div class="nota">1. Toca em «Abrir na app de autenticador» (Google Authenticator, Aegis, Microsoft Authenticator…) e aceita adicionar. <br>2. Se não abrir, copia a chave e escolhe «introduzir chave» na app.<br>3. Escreve aqui o código de 6 dígitos que a app mostra.</div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0"><a class="b pri" href="' + esc(a.otpauth) + '">Abrir na app de autenticador</a>' +
+          '<button class="b" data-acao="copiar" data-t="' + esc(a.segredo) + '" data-k="seg">' + (S.copiado === 'seg' ? 'Copiado ✓' : 'Copiar a chave') + '</button></div>' +
+          '<div class="nota" style="font-family:ui-monospace,Menlo,monospace;word-break:break-all">' + esc(a.segredo.replace(/(.{4})/g, '$1 ').trim()) + '</div>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap"><input type="text" id="vtch-aut" inputmode="numeric" maxlength="7" placeholder="123 456" autocomplete="one-time-code" style="width:130px"><button class="b pri" data-acao="autConfirma">Confirmar</button><button class="b" data-acao="autFecha">Cancelar</button></div>' +
+          (a.erro ? '<div class="erro">' + esc(a.erro) + '</div>' : '');
+      } else if (S.autAtivo) {
+        h += '<div class="nota"><b>O autenticador está ativo.</b> Para entrares como dono, escreve o código de 6 dígitos da app (a chave fixa continua a servir de recuperação).</div><button class="b" data-acao="autPreparar">Mudar de telemóvel ou refazer</button>';
+      } else if (S.autAtivo === false) {
+        h += '<div class="nota">Em vez de decorar uma chave, entras como dono com o código de 6 dígitos da tua app de autenticador (como no Fotowall e no Conductor).</div><button class="b pri" data-acao="autPreparar">Ativar o autenticador</button>';
+      } else { h += '<div class="nota">A ver…</div>'; }
+      return h + '</div>';
+    }
+    function pedidoDono(caminho, corpo) {
+      return fetch(ctx.api + caminho, { method: corpo ? 'POST' : 'GET', headers: { 'X-PIN': ctx.pin, 'Content-Type': 'application/json' }, body: corpo ? JSON.stringify(corpo) : undefined })
+        .then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); });
     }
 
     function ajudaGoogle() {
@@ -347,6 +375,7 @@
           (enviado ? '<span class="tag ok">enviado</span>' : '') + botaoContacto(p) + '<div class="ac">' + acoes + '</div></div>' + (S.edita === m.id ? linhaEditar(p) : '');
       });
       h += '</div>';
+      h += caixaSeguranca();
       h += '<div class="rodape"><span class="nota">Válido até ' + new Date(d.expira).toLocaleDateString('pt-PT', { day: 'numeric', month: 'long' }) + ' · as mensagens apagam-se depois</span><span>' +
         '<button class="b" data-acao="maisPessoas">Acrescentar pessoas</button> <button class="b perigo" data-acao="fechar">' + (S.conf === 'fechar' ? 'Tens a certeza? Toca outra vez (apaga tudo)' : 'Fechar o chat') + '</button></span></div>';
       return h;
@@ -457,6 +486,25 @@
       function pedeConfirmar(chv) { S.conf = chv; desenhar(); setTimeout(function () { if (S.conf === chv) { S.conf = null; desenhar(); } }, 5000); }
       if (a === 'sair') { el.remove(); var s = document.getElementById('vtch-css'); if (s) s.remove(); return; }
       lerCaixas();
+      if (a === 'autPreparar') {
+        pedidoDono('/api/admin/autenticador/preparar', {}).then(function (x) {
+          if (x.r.ok && x.j.segredo) S.aut = { fase: 'preparar', segredo: x.j.segredo, otpauth: x.j.otpauth, erro: '' };
+          else S.erro = (x.j && x.j.error) || 'Não consegui preparar o autenticador.';
+          desenhar();
+        }).catch(function () { S.erro = 'Sem ligação ao servidor.'; desenhar(); });
+        return;
+      }
+      if (a === 'autFecha') { S.aut = null; desenhar(); return; }
+      if (a === 'autConfirma') {
+        var cod = ((document.getElementById('vtch-aut') || {}).value || '').replace(/\s+/g, '');
+        if (!/^\d{6}$/.test(cod)) { S.aut.erro = 'Escreve os 6 dígitos que a app mostra.'; desenhar(); return; }
+        pedidoDono('/api/admin/autenticador/confirmar', { codigo: cod }).then(function (x) {
+          if (x.r.ok && x.j.recuperacao) { S.autAtivo = true; S.aut = { fase: 'codigos', lista: x.j.recuperacao }; }
+          else S.aut.erro = (x.j && x.j.error) || 'Esse código não bate certo.';
+          desenhar();
+        }).catch(function () { S.aut.erro = 'Sem ligação ao servidor.'; desenhar(); });
+        return;
+      }
       if (a === 'sincNativo') { sincronizarNativo(true); return; }
       if (a === 'google') {
         var cid = clientId();
@@ -525,6 +573,7 @@
     });
 
     desenhar();
+    fetch(ctx.api + '/api/dono/estado').then(function (r) { return r.json(); }).then(function (j) { S.autAtivo = !!j.autenticador; desenhar(); }).catch(function () { S.autAtivo = null; });
     if (NAT) sincronizarNativo(false);
     if (typeof document !== 'undefined' && !NAT) carregarGsi().catch(function () { /* sem Google: continua a haver ficheiro e telemovel */ });
     H('?key=' + encodeURIComponent(ctx.sig)).then(function (j) {

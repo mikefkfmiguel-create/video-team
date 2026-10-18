@@ -329,6 +329,39 @@ try:
         ok(True, "se a pessoa recusa a permissao: mensagem a explicar onde a dar nas definicoes do Android")
         pag2.close()
 
+        # ---- entrar como dono com o autenticador: ativar no ecra e usar o codigo
+        import base64, hashlib, hmac, struct
+
+        def totp(segredo, passo):
+            chave = base64.b32decode(segredo.replace(" ", "").upper() + "=" * (-len(segredo.replace(" ", "")) % 8))
+            h = hmac.new(chave, struct.pack(">Q", passo), hashlib.sha1).digest()
+            o = h[19] & 15
+            return "%06d" % ((struct.unpack(">I", h[o:o + 4])[0] & 0x7fffffff) % 1000000)
+        pag.evaluate("var x = document.getElementById('vtch'); if (x) x.remove()")
+        pag.evaluate("window.__vtChat.abrir({ api: '%s', pin: 'dono-teste', sig: 'os:9:Seguranca', titulo: 'Seguranca', crew: [{id:'1', name:'Ana Silva', grupo:'T', days:['2026-10-21'], filtrado:true}] })" % API)
+        pag.wait_for_selector("[data-acao=autPreparar]", timeout=10000)
+        ok("Ativar o autenticador" in pag.inner_text("#vtch"), "caixa «Segurança»: oferece ativar o autenticador")
+        pag.click("[data-acao=autPreparar]")
+        pag.wait_for_selector("#vtch-aut", timeout=8000)
+        href = pag.get_attribute("a:has-text('Abrir na app de autenticador')", "href")
+        segredo = href.split("secret=")[1].split("&")[0]
+        ok(href.startswith("otpauth://totp/Video%20Team:dono") and len(segredo) == 32, "mostra o botao «Abrir na app de autenticador» (otpauth://) com a chave")
+        pag.fill("#vtch-aut", "000000")
+        pag.click("[data-acao=autConfirma]")
+        pag.wait_for_function("document.getElementById('vtch').innerText.includes('não bate certo')", timeout=8000)
+        ok(True, "um codigo errado e recusado")
+        passo = int(time.time()) // 30
+        pag.fill("#vtch-aut", totp(segredo, passo))
+        pag.click("[data-acao=autConfirma]")
+        pag.wait_for_function("document.getElementById('vtch').innerText.includes('8 códigos de recuperação')", timeout=8000)
+        ok(len(re.findall(r"[A-Z2-7]{5}-[A-Z2-7]{5}", pag.inner_text("#vtch"))) == 8, "certo: ativa e mostra os 8 codigos de recuperacao")
+        pag.click("[data-acao=autFecha]")
+        ok("O autenticador está ativo" in pag.inner_text("#vtch"), "depois, a caixa diz que o autenticador esta ativo")
+        r_ent = urllib.request.Request(API + "/api/dono/entrar", data=json.dumps({"codigo": totp(segredo, passo + 1)}).encode(), method="POST", headers={"Content-Type": "application/json"})
+        sess = json.loads(urllib.request.urlopen(r_ent).read())["token"]
+        st, jp = chamar("/api/ping", pin=sess)
+        ok(st == 200 and jp["role"] == "owner", "o codigo do autenticador da uma sessao de dono (as rotas do dono aceitam-na)")
+
         # ---- chave errada
         pag.evaluate("var x = document.getElementById('vtch'); if (x) x.remove()")
         pag.evaluate("window.__vtChat.abrir({ api: '%s', pin: 'errada', sig: 'x', titulo: 'x', crew: CREW })" % API)

@@ -559,7 +559,7 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
     var saved = recall('vt.salaspin');
     if (saved) { cb(saved); return; }
     var sh = document.getElementById('sheet');
-    sh.querySelector('.sb').innerHTML = '<div class="sh-h" style="--h:210"><h3>Chave do dono</h3><p>Só o dono edita a equipa por sala. Fica guardada neste aparelho.</p></div>' +
+    sh.querySelector('.sb').innerHTML = '<div class="sh-h" style="--h:210"><h3>Entrar como dono</h3><p>Escreve o código de 6 dígitos do autenticador (ou a chave do dono). Fica guardado neste aparelho.</p></div>' +
       '<form id="spForm" style="margin-top:16px;display:flex;flex-direction:column;gap:10px"><input id="spIn" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" style="height:42px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);padding:0 12px;font:inherit">' +
       '<button class="pdf" style="border:0;cursor:pointer;justify-content:center">Entrar</button><div id="spErr" class="mut"></div></form>';
     sh.classList.add('open');
@@ -570,10 +570,17 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
       var pin = inp.value.trim(), err = document.getElementById('spErr');
       if (!pin) return;
       err.textContent = 'a verificar…';
-      fetch(cfg.salasApi + '/api/ping', { headers: { 'X-PIN': pin } }).then(function (r) { return r.json(); }).then(function (j) {
-        if (j.role !== 'owner') { err.textContent = 'Chave errada.'; return; }
-        store('vt.salaspin', pin);
-        cb(pin);
+      var soDigitos = pin.replace(/\s+/g, ''), recup = /^[A-Za-z2-7]{5}-[A-Za-z2-7]{5}$/.test(pin);
+      var troca = (/^\d{6}$/.test(soDigitos) || recup)
+        ? fetch(cfg.salasApi + '/api/dono/entrar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(recup ? { recuperacao: pin } : { codigo: soDigitos }) })
+            .then(function (r) { return r.ok ? r.json() : null; }).then(function (j) { return j && j.token ? j.token : pin; }).catch(function () { return pin; })
+        : Promise.resolve(pin);
+      troca.then(function (chave) {
+        return fetch(cfg.salasApi + '/api/ping', { headers: { 'X-PIN': chave } }).then(function (r) { return r.json(); }).then(function (j) {
+          if (j.role !== 'owner') { err.textContent = 'Código ou chave errados.'; return; }
+          store('vt.salaspin', chave);
+          cb(chave);
+        });
       }).catch(function () { err.textContent = 'Sem ligação ao servidor.'; });
     };
   }

@@ -123,7 +123,7 @@
   function showAdminLogin() {
     wrap.innerHTML =
       '<div class="card">' + SYM + '<h1>VIDEO<span> TEAM</span></h1>' +
-      '<p>Código de admin.</p>' +
+      '<p>Código de admin ou do autenticador.</p>' +
       '<form id="f"><input id="pin" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" required>' +
       '<button id="go">Entrar</button></form><div class="err" id="err"></div>' +
       '<button class="ghost" id="back">‹ Pedir acesso</button>' +
@@ -135,7 +135,13 @@
       var pin = document.getElementById('pin').value.trim();
       var go = document.getElementById('go'), err = document.getElementById('err');
       go.disabled = true; err.textContent = '';
-      fetch(API + '/api/ping', { headers: { 'X-PIN': pin } }).then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
+      // 6 digitos (autenticador) ou codigo de recuperacao: troca-se por uma sessao de dono; senao e um codigo de admin normal
+      var sess = null, soDigitos = pin.replace(/\s+/g, ''), recup = /^[A-Za-z2-7]{5}-?[A-Za-z2-7]{5}$/.test(pin) && /-/.test(pin);
+      var tentaSessao = (/^\d{6}$/.test(soDigitos) || recup)
+        ? fetch(API + '/api/dono/entrar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(recup ? { recuperacao: pin } : { codigo: soDigitos }) })
+            .then(function (r) { return r.ok ? r.json() : null; }).then(function (j) { if (j && j.token) sess = j.token; }).catch(function () {})
+        : Promise.resolve();
+      tentaSessao.then(function () { if (sess) pin = sess; return fetch(API + '/api/ping', { headers: { 'X-PIN': pin } }); }).then(function (r) { return r.json().then(function (j) { return { r: r, j: j }; }); })
         .then(function (x) {
           if (x.r.ok && x.j.role) {
             set('vt.pin', pin);

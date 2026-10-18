@@ -9,6 +9,7 @@ import { parseEscala } from './parse.js';
 import { handleSala, loadDoc, publicView } from './salas.js';
 import { serveDl } from './folha.js';
 import { handleChatAdmin, saudeChat } from './chat.js';
+import { confirmarAutenticador, entrarDono, estadoDono, prepararAutenticador, sessaoValida } from './autenticador.js';
 
 const BASE = 'http://7eventos.avk.pt/7Eventos';
 // A escala so e lida do 7Eventos pelo cron (poucas vezes ao dia), pela primeira pessoa
@@ -207,6 +208,15 @@ async function handleStatus(req, env, h) {
 async function handleAdmin(url, req, env, h, myRole) {
   const myRank = RANK[myRole] ?? 0;
   // equipa por sala/funcao: so o dono edita (admins aprovados por email ficam de fora)
+  // autenticador do dono: preparar o segredo e confirmar com um codigo (so o dono)
+  if (url.pathname === '/api/admin/autenticador/preparar' && req.method === 'POST') {
+    if (myRole !== 'owner') return json({ error: 'so o dono' }, 403, h);
+    return prepararAutenticador(env, h, { json });
+  }
+  if (url.pathname === '/api/admin/autenticador/confirmar' && req.method === 'POST') {
+    if (myRole !== 'owner') return json({ error: 'so o dono' }, 403, h);
+    return confirmarAutenticador(req, env, h, { json, readJson });
+  }
   // chat por evento (servidor no VPS): so o dono cria/fecha salas e emite os links pessoais; o Worker so reencaminha
   if (url.pathname.startsWith('/api/admin/chat')) {
     if (myRole !== 'owner') return json({ error: 'so o dono' }, 403, h);
@@ -280,6 +290,7 @@ async function handleAdmin(url, req, env, h, myRole) {
 async function roleOf(pin, env) {
   if (!pin) return null;
   if (await same(pin, env.VT_PIN_ADMIN)) return 'owner';
+  if (await sessaoValida(env, pin)) return 'owner';          // entrou com o autenticador
   const entry = await env.FOTOS.get(`req:${pin}`, 'json');
   if (entry && entry.status === 'approved') return entry.role || 'video';
   return null;
@@ -378,6 +389,8 @@ export default {
       if (url.pathname === '/api/request' && req.method === 'POST') return handleRequest(req, env, h);
       if (url.pathname === '/api/status' && req.method === 'GET') return handleStatus(req, env, h);
       if (url.pathname === '/api/chat-saude' && req.method === 'GET') return saudeChat(env, h, { json });
+      if (url.pathname === '/api/dono/estado' && req.method === 'GET') return estadoDono(env, h, { json });
+      if (url.pathname === '/api/dono/entrar' && req.method === 'POST') return entrarDono(req, env, h, { json, readJson });
 
       // ficheiros temporarios (exportar/imprimir): o proprio token e o segredo, nao precisam de PIN
       const dl = url.pathname.match(/^\/dl\/([a-f0-9]{32})$/);
