@@ -245,10 +245,12 @@
       var n = crew.filter(function (c) { return S.sel[c.id]; }).length, comTel = 0, vis = pessoasVisiveis();
       var h = caixaContactos() + '<div class="caixa"><h4>Quem entra no chat</h4><div class="nota">' + (temFiltro && !S.todos ? 'Só as ' + vis.length + ' pessoas do filtro do Video Team' + (ctx.filtroTxt ? ' (' + esc(ctx.filtroTxt) + ')' : '') + '. ' : '') +
         'Cada uma recebe o seu link pessoal e fica a ver e a escrever neste chat do evento.</div>';
+      var grupos = {}; vis.forEach(function (p) { grupos[p.grupo || ''] = 1; });
+      var variasCategorias = Object.keys(grupos).length > 1;
       vis.forEach(function (p) {
         var c = eu(p); if (S.sel[p.id] && c.t) comTel++;
         h += '<div class="linha compacta"><input type="checkbox" data-acao="sel" data-id="' + esc(p.id) + '" id="vtch-s' + esc(p.id) + '"' + (S.sel[p.id] ? ' checked' : '') + ' aria-label="' + esc(p.name) + '">' + avatar(p.name, p.id) +
-          '<div class="nm"><label for="vtch-s' + esc(p.id) + '">' + esc(p.name) + '</label><small>' + esc(p.grupo || '') + '</small><div style="margin-top:3px">' + chipContacto(p, c) + '</div></div>' +
+          '<div class="nm"><label for="vtch-s' + esc(p.id) + '">' + esc(p.name) + '</label>' + (variasCategorias ? '<small>' + esc(p.grupo || '') + '</small>' : '') + '<div style="margin-top:3px">' + chipContacto(p, c) + '</div></div>' +
           '<div class="bt">' + botaoContacto(p) + '</div></div>' + (S.edita === p.id ? linhaEditar(p) : '');
       });
       h += '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><button class="b" data-acao="marcaTodas">Marcar todas</button><button class="b" data-acao="marcaNenhuma">Desmarcar todas</button></div>';
@@ -291,6 +293,8 @@
       h += '<div class="caixa"><h4>Tu (régie)</h4><div class="linha">' + avatar(d.dono.nome, 'dono') + '<div class="nm">' + esc(d.dono.nome) + '<small>escreves avisos fixos para todos</small></div><div class="ac">' +
         '<a class="b pri" href="' + esc(link(d.dono.token)) + '" target="_blank" rel="noopener">Abrir o chat</a><button class="b" data-acao="copiar" data-t="' + esc(link(d.dono.token)) + '" data-k="dono">' + (S.copiado === 'dono' ? 'Copiado ✓' : 'Copiar link') + '</button></div></div></div>';
       h += '<div class="caixa"><h4>Pessoas (' + d.membros.length + ')</h4>';
+      var gruposG = {}; d.membros.forEach(function (m) { gruposG[m.grupo || ''] = 1; });
+      var variasG = Object.keys(gruposG).length > 1;
       d.membros.forEach(function (m) {
         var p = { id: m.id, name: m.name, grupo: m.grupo }, c = eu(p), msg = texto(m.name, m.token), acoes = '';
         function marca(canal) { return S.enviados[enviadoKey(m.id, canal)] ? ' ✓' : ''; }
@@ -302,7 +306,7 @@
         acoes += '<button class="b" data-acao="copiar" data-t="' + esc(msg) + '" data-k="' + esc(m.id) + '">' + (S.copiado === m.id ? 'Copiado ✓' : 'Copiar') + '</button>';
         acoes += '<button class="b perigo" data-acao="remover" data-id="' + esc(m.id) + '" title="Retirar do chat (o link deixa de funcionar)">✕</button>';
         var enviado = S.enviados[enviadoKey(m.id, 'wa')] || S.enviados[enviadoKey(m.id, 'sms')] || S.enviados[enviadoKey(m.id, 'mail')];
-        h += '<div class="linha">' + avatar(m.name, m.id) + '<div class="nm">' + esc(m.name) + '<small>' + esc(m.grupo || '') + '</small></div>' + chipContacto(p, c) +
+        h += '<div class="linha">' + avatar(m.name, m.id) + '<div class="nm">' + esc(m.name) + (variasG ? '<small>' + esc(m.grupo || '') + '</small>' : '') + '</div>' + chipContacto(p, c) +
           (enviado ? '<span class="tag ok">enviado</span>' : '') + botaoContacto(p) + '<div class="ac">' + acoes + '</div></div>' + (S.edita === m.id ? linhaEditar(p) : '');
       });
       h += '</div>';
