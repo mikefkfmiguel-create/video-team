@@ -243,7 +243,7 @@
     // ---- 1) escolher pessoas e criar
     function escolher() {
       var n = crew.filter(function (c) { return S.sel[c.id]; }).length, comTel = 0, vis = pessoasVisiveis();
-      var h = '<div class="caixa"><h4>Quem entra no chat</h4><div class="nota">' + (temFiltro && !S.todos ? 'Só as ' + vis.length + ' pessoas do filtro do Video Team' + (ctx.filtroTxt ? ' (' + esc(ctx.filtroTxt) + ')' : '') + '. ' : '') +
+      var h = caixaContactos() + '<div class="caixa"><h4>Quem entra no chat</h4><div class="nota">' + (temFiltro && !S.todos ? 'Só as ' + vis.length + ' pessoas do filtro do Video Team' + (ctx.filtroTxt ? ' (' + esc(ctx.filtroTxt) + ')' : '') + '. ' : '') +
         'Cada uma recebe o seu link pessoal e fica a ver e a escrever neste chat do evento.</div>';
       vis.forEach(function (p) {
         var c = eu(p); if (S.sel[p.id] && c.t) comTel++;
@@ -253,7 +253,7 @@
       });
       h += '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><button class="b" data-acao="marcaTodas">Marcar todas</button><button class="b" data-acao="marcaNenhuma">Desmarcar todas</button></div>';
       if (temFiltro) h += '<div style="margin-top:8px"><button class="b" data-acao="todos">' + (S.todos ? 'Mostrar só o filtro' : 'Mostrar toda a equipa do evento (+' + (crew.length - crew.filter(function (c) { return c.filtrado; }).length) + ')') + '</button></div>';
-      h += '</div>' + caixaContactos();
+      h += '</div>';
       h += '<div class="caixa"><h4>O teu nome no chat</h4><input type="text" id="vtch-nome" maxlength="40" value="' + esc(S.nome) + '"><div class="nota">Aparece como «régie» ao lado do nome.</div></div>';
       h += '<div class="rodape"><span class="nota">' + n + ' pessoa' + (n === 1 ? '' : 's') + ' · ' + comTel + ' com telemóvel</span><span>' +
         (S.doc ? '<button class="b" data-acao="voltaGerir">Voltar</button> ' : '') + '<button class="b pri" data-acao="criar"' + (n && !S.ocupado ? '' : ' disabled') + '>' + (S.doc ? 'Acrescentar à sala' : 'Criar chat e preparar links') + '</button></span></div>';
@@ -261,7 +261,9 @@
     }
 
     function caixaContactos() {
-      return '<div class="caixa"><h4>Contactos</h4><div class="nota">Os números ficam só neste aparelho. ' + (PICKER ? '<b>O Video Team não vê a tua agenda sozinho: carrega em «Escolher contactos no telemóvel» e, no seletor que abre, usa «Selecionar tudo» (ou marca só a equipa) e confirma. Fica guardado neste aparelho e casa com os nomes da equipa. Para um só, usa o 📇 da pessoa. </b>' : 'No iPhone ou no computador não há acesso direto aos contactos: ') + 'Em contacts.google.com: <b>Exportar → Google CSV</b>, e importa o ficheiro aqui (também serve um .vcf).</div>' +
+      var alvo = S.doc && S.vista === 'gerir' ? S.doc.membros.map(function (m) { return { id: m.id, name: m.name }; }) : pessoasVisiveis();
+      var com = alvo.filter(function (p) { return eu(p).t; }).length;
+      return '<div class="caixa"><h4>Contactos · ' + com + ' de ' + alvo.length + ' com telemóvel</h4><div class="nota">Os números ficam só neste aparelho. ' + (PICKER ? '<b>O Video Team não vê a tua agenda sozinho: carrega em «Escolher contactos no telemóvel» e, no seletor que abre, usa «Selecionar tudo» (ou marca só a equipa) e confirma. Fica guardado neste aparelho e casa com os nomes da equipa. Para um só, usa o 📇 da pessoa. </b>' : 'No iPhone ou no computador não há acesso direto aos contactos: ') + 'Em contacts.google.com: <b>Exportar → Google CSV</b>, e importa o ficheiro aqui (também serve um .vcf).</div>' +
         '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + (PICKER ? '<button class="b pri" data-acao="pickVarios">Escolher contactos no telemóvel</button>' : '') + '<button class="b' + (PICKER ? '' : ' pri') + '" data-acao="google">Importar do Google Contactos</button>' + '<button class="b" data-acao="importar">Importar ficheiro (.csv / .vcf)</button><input type="file" id="vtch-fich" accept=".csv,.vcf,text/csv,text/vcard,text/x-vcard" hidden>' +
         '<span class="nota" style="margin:0" role="status">' + (S.importou || (S.lista.length ? S.lista.length + ' contactos importados' : 'Ainda sem contactos importados')) + '</span>' +
         (S.lista.length ? '<button class="b perigo" data-acao="limpaContactos">Apagar importados</button>' : '') + '</div>' + (S.pedeCid || S.googleErro ? ajudaGoogle() : '') + '</div>';
@@ -284,6 +286,8 @@
       var d = S.doc, h = '';
       h += '<div class="caixa"><h4>Mensagem a enviar</h4><textarea id="vtch-msg" aria-label="Mensagem">' + esc(S.msg) + '</textarea>' +
         '<div class="nota">{nome} {evento} e {link} são trocados por pessoa. <button class="b" data-acao="msgPadrao" style="height:26px">Repor</button></div></div>';
+      var semTel = d.membros.filter(function (m) { return !eu({ id: m.id, name: m.name }).t; }).length;
+      if (semTel) h = caixaContactos() + h;
       h += '<div class="caixa"><h4>Tu (régie)</h4><div class="linha">' + avatar(d.dono.nome, 'dono') + '<div class="nm">' + esc(d.dono.nome) + '<small>escreves avisos fixos para todos</small></div><div class="ac">' +
         '<a class="b pri" href="' + esc(link(d.dono.token)) + '" target="_blank" rel="noopener">Abrir o chat</a><button class="b" data-acao="copiar" data-t="' + esc(link(d.dono.token)) + '" data-k="dono">' + (S.copiado === 'dono' ? 'Copiado ✓' : 'Copiar link') + '</button></div></div></div>';
       h += '<div class="caixa"><h4>Pessoas (' + d.membros.length + ')</h4>';
@@ -301,7 +305,7 @@
         h += '<div class="linha">' + avatar(m.name, m.id) + '<div class="nm">' + esc(m.name) + '<small>' + esc(m.grupo || '') + '</small></div>' + chipContacto(p, c) +
           (enviado ? '<span class="tag ok">enviado</span>' : '') + botaoContacto(p) + '<div class="ac">' + acoes + '</div></div>' + (S.edita === m.id ? linhaEditar(p) : '');
       });
-      h += '</div>' + caixaContactos();
+      h += '</div>';
       h += '<div class="rodape"><span class="nota">Válido até ' + new Date(d.expira).toLocaleDateString('pt-PT', { day: 'numeric', month: 'long' }) + ' · as mensagens apagam-se depois</span><span>' +
         '<button class="b" data-acao="maisPessoas">Acrescentar pessoas</button> <button class="b perigo" data-acao="fechar">Fechar o chat</button></span></div>';
       return h;
