@@ -26,7 +26,8 @@ class MainActivity : Activity() {
         const val START = "http://$HOST/7Eventos/EscalasTecnicos/GetPeriodoJS"
         const val SALAS_API = "https://video-team.avkvideoshare.workers.dev"
         const val PEDIDO_CONTACTOS = 4242
-        const val MAX_CONTACTOS = 300
+        const val MAX_CONTACTOS = 3000
+        const val MAX_BUSCA = 40
     }
 
     private lateinit var web: WebView
@@ -125,6 +126,19 @@ class MainActivity : Activity() {
             } catch (e: Exception) { return "[]" }
             if (consultas.isEmpty()) return "[]"
 
+            return consultar(MAX_CONTACTOS) { nome -> parecido(nome, consultas) }
+        }
+
+        /** Procura por texto (o ecra do chat usa-a quando o contacto nao casou sozinho): contactos cujo nome contem o que a pessoa escreveu. */
+        @JavascriptInterface
+        fun procurar(texto: String): String {
+            if (!paginaDoHost || !temPermissao()) return "[]"
+            val q = normalizar(texto)
+            if (q.length < 2) return "[]"
+            return consultar(MAX_BUSCA) { nome -> normalizar(nome).contains(q) }
+        }
+
+        private fun consultar(max: Int, quer: (String) -> Boolean): String {
             val nomes = HashMap<Long, String>()
             val telefones = HashMap<Long, MutableList<String>>()
             val emails = HashMap<Long, String>()
@@ -138,7 +152,7 @@ class MainActivity : Activity() {
                         val id = c.getLong(0)
                         val nome = c.getString(1) ?: continue
                         val num = c.getString(2) ?: continue
-                        if (!parecido(nome, consultas)) continue
+                        if (!quer(nome)) continue
                         nomes[id] = nome
                         telefones.getOrPut(id) { mutableListOf() }.let { if (num !in it) it.add(num) }
                     }
@@ -159,7 +173,7 @@ class MainActivity : Activity() {
 
             val out = JSONArray()
             for ((id, nome) in nomes) {
-                if (out.length() >= MAX_CONTACTOS) break
+                if (out.length() >= max) break
                 out.put(JSONObject().put("n", nome).put("t", JSONArray(telefones[id] ?: emptyList<String>())).put("e", emails[id] ?: ""))
             }
             return out.toString()

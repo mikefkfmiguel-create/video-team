@@ -83,6 +83,14 @@ t('o acerto a mao ganha sempre', () => {
   assert.equal(r.de, 'manual');
 });
 
+t('inicial do apelido: «Rodrigo S» sugere «Rodrigo Santos» (e «Rodrigo Batista» tambem: confirma o dono)', () => {
+  const L = C.lerCsv('First Name,Last Name,Phone 1 - Value\nRodrigo,S,961 000 001\nZe,Silva,962 000 002');
+  const a = C.contactoDe({ id: '1', name: 'Rodrigo Santos' }, L, {});
+  assert.ok(a.ambiguo && a.aproximado && a.ambiguo[0].t[0] === '351961000001', JSON.stringify(a));
+  assert.deepEqual(C.contactoDe({ id: '2', name: 'Rodrigo Batista' }, L, {}), {}, '«Rodrigo S» nao serve para «Rodrigo Batista» (a inicial nao bate)');
+  assert.deepEqual(C.contactoDe({ id: '3', name: 'Zeca Silva' }, L, {}), {}, '«Ze» como 1.o nome continua curto demais');
+});
+
 t('abreviaturas: «Rafa» para «Rafael Anchieta» e sugerido, nunca automatico', () => {
   const L = C.lerCsv('First Name,Last Name,Phone 1 - Value\nRafa,,961 000 001\nTiago,,962 000 002\nTi,,963 000 003\nZe,,964 000 004\nTiago,Mota,965 000 005');
   const r = C.contactoDe({ id: '1', name: 'Rafael Anchieta' }, L, {});

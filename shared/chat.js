@@ -106,7 +106,7 @@
       if (!a[0]) return false;
       for (var i = 0; i < a.length; i++) {
         var t = a[i], achou = -1;
-        if (t.length < 3) return false;
+        if (t.length < 3 && (i === 0 || t.length < 1)) return false;      // inicial do apelido («Rodrigo S») vale; o 1.o nome precisa de 3 letras
         for (var k = j; k < ts.length; k++) { if (ts[k].indexOf(t) === 0) { achou = k; break; } }
         if (achou < 0) return false;
         j = achou + 1;
@@ -231,7 +231,7 @@
     crew.forEach(function (c) { (c.days || []).forEach(function (d) { if (d > ultimoDia) ultimoDia = d; }); });
     var temFiltro = crew.some(function (c) { return c.filtrado; }) && crew.some(function (c) { return !c.filtrado; });
     var S = {
-      autAtivo: null, aut: null, msgEnvio: '',
+      autAtivo: null, aut: null, msgEnvio: '', busca: null,
       todos: !temFiltro, doc: null, vista: 'carregar', sel: {}, erro: '', ocupado: false, edita: null, nome: ls(LS_NOME, 'Mike'), msg: ls(LS_MSG, MSG_PADRAO),
       lista: ls(LS_G, []), manual: ls(LS_M, {}), enviados: ls(LS_ENV, {}), copiado: null, importou: ''
     };
@@ -266,8 +266,25 @@
       return '<span class="tag aviso">sem contacto</span>';
     }
 
+    // app Android: procura por texto nos contactos do telemovel, para quem nao casou sozinho («Rafa», «Rodrigo S.»…)
+    var BUSCA = !!(NAT && typeof NAT.procurar === 'function');
+    function resultadosBusca(q) {
+      var lista = [];
+      try { lista = JSON.parse(NAT.procurar(q) || '[]'); } catch (e) { lista = []; }
+      return lista.map(function (c) { var t = []; (c.t || []).forEach(function (x) { var f = fone(x); if (f && t.indexOf(f) < 0) t.push(f); }); return { n: String(c.n || ''), t: t, e: c.e || '' }; }).filter(function (c) { return c.t.length || c.e; });
+    }
+    function htmlResultados(b) {
+      if (!b.res.length) return '<div class="nota" style="margin:6px 0">' + (b.q.length < 2 ? 'Escreve pelo menos 2 letras.' : 'Nenhum contacto com «' + esc(b.q) + '». Tenta só o primeiro nome ou parte dele.') + '</div>';
+      return b.res.map(function (c, i) { return '<button class="b" style="width:100%;justify-content:space-between;margin-top:5px" data-acao="escolheBusca" data-i="' + i + '"><span>' + esc(c.n) + '</span><span class="tag ok">' + esc(c.t[0] ? foneBonito(c.t[0]) : c.e) + '</span></button>'; }).join('');
+    }
+    function linhaBusca(p) {
+      var b = S.busca;
+      return '<div class="edita" style="display:block;margin-left:0"><div style="display:flex;gap:6px"><input type="text" id="vtch-busca" value="' + esc(b.q) + '" placeholder="Procurar nos contactos do telemóvel" autocomplete="off" style="flex:1;min-width:0">' +
+        '<button class="b" data-acao="fechaBusca">Fechar</button></div><div id="vtch-busca-res">' + htmlResultados(b) + '</div></div>';
+    }
+
     function botaoContacto(p) {
-      return (PICKER ? '<button class="b" data-acao="pick" data-id="' + esc(p.id) + '" title="Escolher o contacto no telemóvel">📇</button>' : '') +
+      return (PICKER || BUSCA ? '<button class="b" data-acao="pick" data-id="' + esc(p.id) + '" title="Escolher o contacto no telemóvel">📇</button>' : '') +
         '<button class="b" data-acao="edita" data-id="' + esc(p.id) + '" title="Escrever ou corrigir o contacto">✎</button>';
     }
 
@@ -289,7 +306,7 @@
         var c = eu(p); if (S.sel[p.id] && c.t) comTel++;
         h += '<div class="linha compacta"><input type="checkbox" data-acao="sel" data-id="' + esc(p.id) + '" id="vtch-s' + esc(p.id) + '"' + (S.sel[p.id] ? ' checked' : '') + ' aria-label="' + esc(p.name) + '">' + avatar(p.name, p.id) +
           '<div class="nm"><label for="vtch-s' + esc(p.id) + '">' + esc(p.name) + '</label>' + (variasCategorias ? '<small>' + esc(p.grupo || '') + '</small>' : '') + '<div style="margin-top:3px">' + chipContacto(p, c) + '</div></div>' +
-          '<div class="bt">' + botaoContacto(p) + '</div></div>' + (S.edita === p.id ? linhaEditar(p) : '');
+          '<div class="bt">' + botaoContacto(p) + '</div></div>' + (S.edita === p.id ? linhaEditar(p) : '') + (S.busca && S.busca.id === p.id ? linhaBusca(p) : '');
       });
       h += '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><button class="b" data-acao="marcaTodas">Marcar todas</button><button class="b" data-acao="marcaNenhuma">Desmarcar todas</button></div>';
       if (temFiltro) h += '<div style="margin-top:8px"><button class="b" data-acao="todos">' + (S.todos ? 'Mostrar só o filtro' : 'Mostrar toda a equipa do evento (+' + (crew.length - crew.filter(function (c) { return c.filtrado; }).length) + ')') + '</button></div>';
@@ -377,7 +394,7 @@
         var enviado = S.enviados[enviadoKey(m.id, 'wa')] || S.enviados[enviadoKey(m.id, 'sms')] || S.enviados[enviadoKey(m.id, 'mail')];
         h += '<div class="linha">' + avatar(m.name, m.id) + '<div class="nm">' + esc(m.name) + (variasG ? '<small>' + esc(m.grupo || '') + '</small>' : '') +
           '<div style="margin-top:3px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">' + chipContacto(p, c) + (enviado ? '<span class="tag ok">enviado</span>' : '') + '</div></div>' +
-          '<div style="display:flex;gap:6px;flex:none">' + botaoContacto(p) + '</div><div class="ac">' + acoes + '</div></div>' + (S.edita === m.id ? linhaEditar(p) : '');
+          '<div style="display:flex;gap:6px;flex:none">' + botaoContacto(p) + '</div><div class="ac">' + acoes + '</div></div>' + (S.edita === m.id ? linhaEditar(p) : '') + (S.busca && S.busca.id === m.id ? linhaBusca(p) : '');
       });
       h += '</div>';
       h += caixaSeguranca();
@@ -473,6 +490,14 @@
       rd.readAsText(f);
     }
 
+    el.addEventListener('input', function (ev) {
+      if (ev.target && ev.target.id === 'vtch-busca' && S.busca) {
+        S.busca.q = ev.target.value.trim();
+        S.busca.res = S.busca.q.length >= 2 ? resultadosBusca(S.busca.q) : [];
+        var cx = document.getElementById('vtch-busca-res'); if (cx) cx.innerHTML = htmlResultados(S.busca);
+      }
+    });
+
     el.addEventListener('change', function (ev) {
       var t = ev.target, a = t.getAttribute && t.getAttribute('data-acao');
       if (t.id === 'vtch-fich' && t.files && t.files[0]) { importar(t.files[0]); return; }
@@ -540,6 +565,20 @@
       }
       if (a === 'marcaTodas' || a === 'marcaNenhuma') { pessoasVisiveis().forEach(function (c) { S.sel[c.id] = a === 'marcaTodas'; }); desenhar(); return; }
       if (a === 'todos') { S.todos = !S.todos; desenhar(); return; }
+      if (a === 'pick' && BUSCA) {
+        var pe = crew.filter(function (c) { return c.id === id; })[0] || (S.doc && S.doc.membros.filter(function (m) { return m.id === id; })[0]);
+        var q0 = chave(pe ? pe.name : '').split(' ')[0].slice(0, 4);
+        S.busca = S.busca && S.busca.id === id ? null : { id: id, q: q0, res: resultadosBusca(q0) };
+        desenhar();
+        return;
+      }
+      if (a === 'fechaBusca') { S.busca = null; desenhar(); return; }
+      if (a === 'escolheBusca' && S.busca) {
+        var esc_ = S.busca.res[+b.getAttribute('data-i')];
+        if (esc_) { S.manual[S.busca.id] = { t: esc_.t[0] || '', e: esc_.e || '' }; lsSet(LS_M, S.manual); }
+        S.busca = null; desenhar();
+        return;
+      }
       if (a === 'pick' || a === 'pickVarios') {
         if (!PICKER) return;
         var multi = a === 'pickVarios';
