@@ -81,8 +81,8 @@
   #texto:focus { outline: 2px solid var(--acc); outline-offset: 0; }
   #enviar { flex: none; width: 44px; height: 44px; border: 0; border-radius: 50%; background: linear-gradient(135deg, var(--acc2), var(--acc)); color: #fff; font-size: 19px; cursor: pointer; }
   #enviar:disabled { opacity: .45; }
-  #modoAviso { flex: none; height: 44px; padding: 0 12px; border: 1px solid var(--aviso-line); border-radius: 22px; background: var(--aviso); color: var(--aviso-ink); font: inherit; font-size: 13px; cursor: pointer; }
-  #modoAviso[aria-pressed=true] { background: #f5b800; color: #2a1d00; border-color: #f5b800; font-weight: 700; }
+  #modoAviso { flex: none; width: 44px; height: 44px; padding: 0; border: 1px solid var(--aviso-line); border-radius: 50%; background: var(--aviso); color: var(--aviso-ink); font: inherit; font-size: 19px; line-height: 1; cursor: pointer; }
+  #modoAviso[aria-pressed=true] { background: #f5b800; color: #2a1d00; border-color: #f5b800; box-shadow: 0 0 0 3px rgba(245,184,0,.35); }
   /* folha com a lista de pessoas */
   #folha { position: fixed; inset: 0; z-index: 10; background: rgba(0,0,0,.5); display: flex; align-items: flex-end; justify-content: center; }
   #folha .cx { width: min(520px, 100%); max-height: 78dvh; overflow: auto; background: var(--panel); border-radius: 18px 18px 0 0; padding: 16px 16px max(16px, env(safe-area-inset-bottom)); }
@@ -146,7 +146,7 @@
   <main id="lista" role="log" aria-live="polite" aria-label="Mensagens"></main>
   <button id="novas" hidden>↓ Mensagens novas</button>
   <footer>
-    <button id="modoAviso" aria-pressed="false" hidden title="A mensagem seguinte fica fixa no topo, para todos">📌 Fixar</button>
+    <button id="modoAviso" aria-pressed="false" aria-label="Fixar a próxima mensagem" hidden title="Fixar: a mensagem seguinte fica fixa no topo, para todos">📌</button>
     <button id="camara" type="button" aria-label="Enviar uma foto" title="Enviar uma foto" hidden>📷</button>
     <input type="file" id="ficheiroFoto" accept="image/*" hidden>
     <textarea id="texto" rows="1" placeholder="Escreve uma mensagem" maxlength="2000" enterkeyhint="send" aria-label="Mensagem"></textarea>
@@ -461,7 +461,7 @@
     var m = { id: 0, pid: eu.pid, nome: eu.nome, texto: t, ts: Date.now(), aviso: aviso ? 1 : 0, fixa: 0, pendente: true };
     msgs.push(m); $('texto').value = ''; cresce(); desenhar(); paraOFim();
     enviarTexto(t, aviso, m);
-    if (aviso) { modoAviso = false; $('modoAviso').setAttribute('aria-pressed', 'false'); }
+    if (aviso) { modoAviso = false; $('modoAviso').setAttribute('aria-pressed', 'false'); $('texto').placeholder = 'Escreve uma mensagem'; }
   }
   function reenviar(m) { if (m.ehFoto) { msgs = msgs.filter(function (x) { return x !== m; }); desenhar(); return; } m.falhou = false; m.pendente = true; desenhar(); enviarTexto(m.texto, !!m.aviso, m); }
   $('enviar').onclick = enviar;
@@ -470,7 +470,7 @@
   });
   function cresce() { var t = $('texto'); t.style.height = 'auto'; t.style.height = Math.min(140, t.scrollHeight) + 'px'; }
   $('texto').addEventListener('input', cresce);
-  $('modoAviso').onclick = function () { modoAviso = !modoAviso; this.setAttribute('aria-pressed', String(modoAviso)); $('texto').focus(); };
+  $('modoAviso').onclick = function () { modoAviso = !modoAviso; this.setAttribute('aria-pressed', String(modoAviso)); $('texto').placeholder = modoAviso ? 'Esta mensagem fica fixa no topo' : 'Escreve uma mensagem'; $('texto').focus(); };
 
   // ---------------------------------------------------------------- fotos
   // A foto e reduzida AQUI, no telemovel (1600 px, JPEG): ~0,3 MB em vez de varios MB, e o reencode apaga a localizacao (EXIF).

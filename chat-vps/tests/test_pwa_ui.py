@@ -107,6 +107,18 @@ try:
         ok(medidas['sw'] <= medidas['w'] and medidas['vv'] <= medidas['w'] + 1, 'a pagina nao e mais larga que o telemovel (scrollWidth %d, ecra %d)' % (medidas['sw'], medidas['w']))
         ok(medidas['enviar'] <= medidas['w'] and medidas['aviso'] >= 0 and medidas['logo'] >= 0 and medidas['sino'] <= medidas['w'] and abs(medidas['appL']) < 1, 'cabecalho e rodape (Aviso, caixa, enviar) cabem no ecra: %s' % {k: round(v) for k, v in medidas.items()})
         regie_tel.close()
+        # a regie num telemovel normal: a caixa de texto tem espaco para «Escreve uma mensagem» numa linha (Fixar e camara sao so icones)
+        t390 = nav.new_context(viewport={'width': 390, 'height': 780}, has_touch=True, is_mobile=True, device_scale_factor=2)
+        r390 = t390.new_page()
+        r390.goto(B + '/chat/#' + c['dono']['token'])
+        r390.wait_for_selector('#app:not([hidden])', timeout=15000)
+        cx = r390.evaluate("""(() => { const t = document.getElementById('texto'); const b = t.getBoundingClientRect();
+          const c = document.createElement('canvas').getContext('2d'); const cs = getComputedStyle(t); c.font = cs.fontSize + ' ' + cs.fontFamily;
+          return { w: b.width, h: b.height, txt: c.measureText(t.placeholder).width, pad: parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) }; })()""")
+        ok(cx['h'] <= 48 and cx['w'] - cx['pad'] >= cx['txt'], 'no telemovel a caixa mostra «Escreve uma mensagem» numa so linha (caixa %dpx, texto %dpx)' % (cx['w'] - cx['pad'], cx['txt']))
+        if SHOT:
+            r390.screenshot(path=os.path.join(SHOT, 'pwa-regie-telemovel.png'))
+        t390.close()
 
         # ---- notificacoes
         ana.wait_for_selector('#dica:not([hidden])', timeout=8000)
