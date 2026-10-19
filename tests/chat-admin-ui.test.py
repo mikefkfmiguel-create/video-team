@@ -237,6 +237,9 @@ try:
 
         # ---- «WhatsApp: proxima pessoa»: percorre a lista sem andar a procurar cada uma
         antes = pag.locator("#vtch .tag.ok", has_text="enviado").count()
+        ok(pag.locator("[data-acao=todosEnviados]").count() == 1, "ha o botao «Já enviei a todos» para quem recebeu o link e o painel nao sabia")
+        pag.click("[data-acao=todosEnviados]")
+        ok("Toca outra vez" in pag.inner_text(".rodape"), "pede confirmacao antes de marcar todos como enviados")
         ok("por enviar · próxima:" in pag.inner_text(".rodape") and "Hugo Dias" in pag.inner_text(".rodape"), "o rodape diz quantas faltam e quem e a proxima (a Ana ja foi)")
         pag.click("[data-acao=proxima]")
         pag.wait_for_function("document.querySelectorAll('#vtch .tag.ok').length > %d" % antes, timeout=5000)
@@ -244,6 +247,24 @@ try:
         pag.click("[data-acao=proxima]")
         time.sleep(0.3)
         ok("Todas as que têm telemóvel já foram abertas" in pag.inner_text(".rodape") or "por enviar" in pag.inner_text(".rodape") or "A abrir" in pag.inner_text(".rodape"), "e continua pela lista")
+        # aparelho novo / app reinstalada: sem as marcas locais (so o servidor sabe). Desmarca tudo no servidor, recarrega e testa «Já enviei a todos»
+        _ids = [m["id"] for m in chamar("/api/admin/chat/?key=" + urllib.parse.quote(SIG), pin="dono-teste")[1]["membros"]]
+        _rq = urllib.request.Request(API + "/api/admin/chat/enviado", data=json.dumps({"key": SIG, "ids": _ids, "canal": "wa", "valor": False}).encode(), method="POST", headers={"X-PIN": "dono-teste", "Content-Type": "application/json"})
+        urllib.request.urlopen(_rq).read()
+        pag.evaluate("localStorage.removeItem('vt.chat.enviados')")
+        pag.reload()
+        pag.click("#abre")
+        pag.wait_for_selector("#vtch [data-acao=todosEnviados]", timeout=15000)
+        ok(True, "sem marcas no servidor nem no aparelho, voltam a aparecer pendentes")
+        pag.click("[data-acao=todosEnviados]")
+        pag.click("[data-acao=todosEnviados]")
+        pag.wait_for_function("!document.querySelector('#vtch [data-acao=todosEnviados]')", timeout=8000)
+        ok(True, "«Já enviei a todos» (duas vezes): a lista «por enviar» fica vazia")
+        pag.evaluate("localStorage.removeItem('vt.chat.enviados')")
+        pag.reload()
+        pag.click("#abre")
+        pag.wait_for_selector("#vtch .linha", timeout=15000)
+        ok(not pag.locator("#vtch [data-acao=todosEnviados]").count() and pag.locator("#vtch .tag.ok", has_text="enviado").count() >= 1, "num aparelho sem marcas locais o painel ja sabe quem recebeu o link (vem do servidor)")
 
         # ---- link geral
         ok("Criar o link geral" in pag.inner_text("#vtch"), "no ecra de gerir: caixa «Link geral» a oferecer criar o link")
@@ -262,6 +283,8 @@ try:
         ok("2 de 3 já entraram" in pag.inner_text("#vtch") and "ninguém entra" in pag.inner_text("#vtch"), "o Rui escolheu o nome pelo link geral: o dono ve «2 de 3» e pode desativar o link")
         pag.click("[data-acao=convAtiva]")
         pag.wait_for_function("document.getElementById('vtch').innerText.includes('O link está ativo')", timeout=8000)
+        if not pag.locator("[data-acao=liberta]").count():
+            pag.click("[data-acao=gerirTog]")      # o recarregamento acima fechou o modo «Gerir pessoas»
         pag.wait_for_selector("[data-acao=liberta]", timeout=8000)
         pag.locator("#vtch .linha", has_text="Ana Silva").locator("[data-acao=liberta]").click()
         ok("Toca outra vez" in pag.locator("#vtch .linha", has_text="Ana Silva").inner_text(), "libertar um lugar pede confirmacao")

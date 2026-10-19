@@ -350,6 +350,8 @@ async def main():
         s_, ve = await api('POST', '/chat/api/admin/enviado', admin=SEGREDO, corpo={'key': KEY, 'id': '13', 'canal': 'mail', 'valor': False})
         ok([m for m in ve['membros'] if m['id'] == '13'][0]['enviado'] == ['wa'], 'desmarcar um canal')
         ok((await api('POST', '/chat/api/admin/enviado', admin=SEGREDO, corpo={'key': KEY, 'id': '13', 'canal': 'fax'}))[0] == 400, 'canal inventado: 400')
+        s_, ve = await api('POST', '/chat/api/admin/enviado', admin=SEGREDO, corpo={'key': KEY, 'ids': ['11', '12', '999'], 'canal': 'wa'})
+        ok(s_ == 200 and all('wa' in m['enviado'] for m in ve['membros'] if m['id'] in ('11', '12', '13')), 'marcar varias pessoas de uma vez («ja enviei a todos»); ids que nao existem sao ignorados')
         ok((await api('POST', '/chat/api/admin/enviado', admin=SEGREDO, corpo={'key': KEY, 'id': '999', 'canal': 'wa'}))[0] == 404, 'pessoa que nao existe: 404')
         s_, vv = await api('GET', '/chat/api/admin/ver?key=' + KEY, admin=SEGREDO)
         ok([m for m in vv['membros'] if m['id'] == '13'][0]['enviado'] == ['wa'], 'ao voltar a abrir o painel a marca la esta (sobrevive a reinstalar a app)')

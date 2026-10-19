@@ -256,6 +256,14 @@
     function enviadoKey(id, canal) { return (S.doc ? S.doc.sala : '') + '|' + id + '|' + canal; }
     // «enviado» vem do servidor (so a marca por pessoa, igual em todos os aparelhos e sobrevive a reinstalar) e tambem do que ficou neste aparelho
     function jaEnviado(m, canal) { return !!(S.enviados[enviadoKey(m.id, canal)] || (m.enviado && m.enviado.indexOf(canal) >= 0)); }
+    function marcarTodosEnviados() {
+      var ids = porEnviar().map(function (m) { return m.id; });
+      if (!ids.length) return;
+      ids.forEach(function (id) { S.enviados[enviadoKey(id, 'wa')] = 1; });
+      lsSet(LS_ENV, S.enviados);
+      S.doc.membros.forEach(function (m) { if (ids.indexOf(m.id) >= 0) m.enviado = (m.enviado || []).filter(function (x) { return x !== 'wa'; }).concat('wa'); });
+      H('/enviado', { key: ctx.sig, ids: ids, canal: 'wa' }).then(function (j) { if (j && j.membros && S.doc && j.sala === S.doc.sala) { S.doc = j; if (j.online) S.online = j.online; desenhar(); } }).catch(function () {});
+    }
     function marcarEnviado(id, canal) {
       S.enviados[enviadoKey(id, canal)] = 1; lsSet(LS_ENV, S.enviados);
       if (S.doc) S.doc.membros.forEach(function (m) { if (m.id === id) { m.enviado = (m.enviado || []).filter(function (x) { return x !== canal; }).concat(canal); } });
@@ -441,7 +449,8 @@
         '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="b" data-acao="prolonga">Prolongar 1 dia</button><button class="b" data-acao="maisPessoas">Acrescentar pessoas</button><button class="b perigo" data-acao="fechar">' + (S.conf === 'fechar' ? 'Tens a certeza? Toca outra vez (apaga tudo)' : 'Fechar o chat') + '</button></div></div>';
       var pe = porEnviar();
       if (pe.length || S.msgEnvio) h += '<div class="rodape"><span class="nota">' + (S.msgEnvio ? esc(S.msgEnvio) : pe.length + ' por enviar · próxima: ' + esc(pe[0].name)) + '</span>' +
-        '<button class="b wa" data-acao="proxima"' + (pe.length ? '' : ' disabled') + '>WhatsApp: próxima pessoa</button></div>';
+        '<span style="display:flex;gap:8px;flex-wrap:wrap"><button class="b wa" data-acao="proxima"' + (pe.length ? '' : ' disabled') + '>WhatsApp: próxima pessoa</button>' +
+        (pe.length ? '<button class="b" data-acao="todosEnviados" title="Para quem já recebeu o link e o painel não sabia">' + (S.conf === 'todos' ? 'Marcar ' + pe.length + ' como enviados? Toca outra vez' : 'Já enviei a todos') + '</button>' : '') + '</span></div>';
       return h;
     }
 
@@ -605,6 +614,11 @@
       if (a === 'liberta') {
         if (conf !== 'lib:' + id) { pedeConfirmar('lib:' + id); return; }
         tratar(H('/libertar', { key: ctx.sig, id: id }), function (j) { S.doc = j; });
+        return;
+      }
+      if (a === 'todosEnviados') {
+        if (conf !== 'todos') { pedeConfirmar('todos'); return; }
+        marcarTodosEnviados(); S.msgEnvio = ''; desenhar();
         return;
       }
       if (a === 'proxima') {

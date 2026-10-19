@@ -635,16 +635,22 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
         canal = limpa(b.get('canal'), 10)
         if canal not in ('wa', 'sms', 'mail'):
             return json_resp({'error': 'canal invalido'}, 400)
-        pid = limpa(b.get('id'), 24)
-        m = chat.bd.um('SELECT enviado FROM membro WHERE sala=? AND pid=?', sala, pid)
-        if not m:
+        ids = b.get('ids')
+        pids = [limpa(x, 24) for x in ids[:200]] if isinstance(ids, list) else [limpa(b.get('id'), 24)]      # uma pessoa ou varias de uma vez
+        achou = False
+        for pid in pids:
+            m = chat.bd.um('SELECT enviado FROM membro WHERE sala=? AND pid=?', sala, pid)
+            if not m:
+                continue
+            achou = True
+            canais = set(x for x in (m['enviado'] or '').split(',') if x)
+            if b.get('valor', True):
+                canais.add(canal)
+            else:
+                canais.discard(canal)
+            chat.bd.x('UPDATE membro SET enviado=? WHERE sala=? AND pid=?', ','.join(sorted(canais)), sala, pid)
+        if not achou:
             return json_resp({'error': 'nao encontrado'}, 404)
-        canais = set(x for x in (m['enviado'] or '').split(',') if x)
-        if b.get('valor', True):
-            canais.add(canal)
-        else:
-            canais.discard(canal)
-        chat.bd.x('UPDATE membro SET enviado=? WHERE sala=? AND pid=?', ','.join(sorted(canais)), sala, pid)
         v = vista_dono(chat.bd, sala)
         v['online'] = chat.presentes(sala)
         return json_resp(v)
