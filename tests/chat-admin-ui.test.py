@@ -266,6 +266,20 @@ try:
         pag.wait_for_selector("#vtch .linha", timeout=15000)
         ok(not pag.locator("#vtch [data-acao=todosEnviados]").count() and pag.locator("#vtch .tag.ok", has_text="enviado").count() >= 1, "num aparelho sem marcas locais o painel ja sabe quem recebeu o link (vem do servidor)")
 
+        # ---- receção: a confirmação real é a pessoa abrir o link
+        ok("receção do link" in pag.inner_text("#vtch").lower() and "já abriram o chat" in pag.inner_text("#vtch"), "caixa «Receção do link (confirmação)» com quantos já abriram o chat")
+        _txt = pag.inner_text("#vtch")
+        ok("O WhatsApp não diz se a mensagem foi lida" in _txt and "Ainda não abriram:" in _txt, "explica que o WhatsApp não confirma e lista quem ainda não abriu")
+        ok("da escala deste evento não estão neste chat" in _txt and "Hugo Dias" in _txt and pag.locator("#vtch .caixa [data-acao=maisPessoas]").count() >= 1, "avisa que há pessoas da escala que não estão no chat (o Hugo ficou de fora) e oferece «Acrescentar pessoas»")
+        _todas = pag.locator("#vtch .linha").count()
+        pag.click("[data-acao=soFalta]")
+        ok(pag.locator("#vtch .linha").count() < _todas and "Mostrar todos" in pag.inner_text("#vtch"), "«Mostrar só quem falta»: quem já abriu sai da lista")
+        pag.click("[data-acao=soFalta]")
+        ok(pag.locator("#vtch .linha").count() == _todas, "«Mostrar todos» repõe a lista")
+        pag.click("[data-acao=lembrar]")
+        pag.wait_for_function("document.querySelector('#vtch .rodape') && /lembrete|Ninguém por lembrar/.test(document.querySelector('#vtch .rodape').innerText)", timeout=5000)
+        ok("lembrete" in pag.inner_text(".rodape") or "Ninguém por lembrar" in pag.inner_text(".rodape"), "«WhatsApp: lembrar quem não abriu» abre o WhatsApp de quem falta com o lembrete (ou diz que não há ninguém com telemóvel)")
+
         # ---- link geral
         ok("Criar o link geral" in pag.inner_text("#vtch"), "no ecra de gerir: caixa «Link geral» a oferecer criar o link")
         pag.click("[data-acao=convCria]")
@@ -345,7 +359,7 @@ try:
         pag.locator("#vtch .linha", has_text="Hugo Dias").locator("[data-acao=remover]").click()
         ok("Toca outra vez" in pag.inner_text("#vtch"), "retirar pede confirmacao no proprio botao (sem janelas do navegador, que a app Android nao tem)")
         pag.locator("#vtch .linha", has_text="Hugo Dias").locator("[data-acao=remover]").click()
-        pag.wait_for_function("!document.querySelector('#vtch').innerText.includes('Hugo Dias')", timeout=8000)
+        pag.wait_for_function("[...document.querySelectorAll('#vtch .linha')].every(l => !l.innerText.includes('Hugo Dias'))", timeout=8000)      # (o nome dele pode aparecer na nota «da escala, fora do chat»)
         tok_hugo = [m for m in antes["membros"] if m["id"] == "4"][0]["token"]
         ok(chamar("/chat/api/sala", k=tok_hugo)[0] == 401, "retirar o Hugo: o link dele deixa de funcionar")
         pag.click("[data-acao=fechar]")

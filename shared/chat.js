@@ -233,7 +233,7 @@
     var S = {
       autAtivo: null, aut: null, msgEnvio: '', busca: null, gerirPessoas: false,
       todos: !temFiltro, doc: null, vista: 'carregar', sel: {}, erro: '', ocupado: false, edita: null, nome: ls(LS_NOME, 'Mike'), msg: ls(LS_MSG, MSG_PADRAO),
-      lista: ls(LS_G, []), manual: ls(LS_M, {}), enviados: ls(LS_ENV, {}), online: [], ass: '', copiado: null, importou: ''
+      lista: ls(LS_G, []), manual: ls(LS_M, {}), enviados: ls(LS_ENV, {}), online: [], ass: '', soFalta: false, lembrados: {}, copiado: null, importou: ''
     };
     crew.forEach(function (c) { S.sel[c.id] = temFiltro ? !!c.filtrado : true; });
     function pessoasVisiveis() { return crew.filter(function (c) { return S.todos || !temFiltro || c.filtrado; }); }
@@ -407,6 +407,34 @@
         '<div style="margin-top:8px"><button class="b pri" data-acao="extAdd">Adicionar</button></div></div>';
     }
 
+    // Receção: o WhatsApp não diz se a mensagem foi entregue ou lida; a confirmação real é a pessoa ABRIR o seu link («entrou»).
+    function algumEnviado(m) { return jaEnviado(m, 'wa') || jaEnviado(m, 'sms') || jaEnviado(m, 'mail'); }
+    function textoLembrete(nome, token) {
+      return 'Olá ' + primeiroNome(nome) + '! Ainda não abriste o chat do evento «' + (ctx.titulo || 'evento') + '». Abre o teu link pessoal (é só tocar): ' + link(token);
+    }
+    function caixaRececao() {
+      var d = S.doc, tot = d.membros.length;
+      if (!tot) return '';
+      var ent = d.membros.filter(function (m) { return m.entrou; });
+      var falta = d.membros.filter(function (m) { return !m.entrou; });
+      var semAbrir = falta.filter(algumEnviado), porEnv = falta.filter(function (m) { return !algumEnviado(m); });
+      var pct = Math.round(ent.length * 100 / tot);
+      var daEscala = crew.filter(function (c) { return !d.membros.some(function (m) { return m.id === c.id; }); });     // na escala deste evento mas fora deste chat
+      var h = '<div class="caixa"><h4>Receção do link (confirmação)</h4>' +
+        (daEscala.length ? '<div class="nota" style="margin-bottom:8px"><b>' + daEscala.length + ' pessoa' + (daEscala.length === 1 ? '' : 's') + ' da escala deste evento não estão neste chat</b> (o chat só levou as do filtro, ou foram marcadas depois): ' +
+          daEscala.slice(0, 6).map(function (c) { return esc(c.name); }).join(', ') + (daEscala.length > 6 ? ' e mais ' + (daEscala.length - 6) : '') + '. <button class="b" data-acao="maisPessoas" style="height:28px">Acrescentar pessoas</button></div>' : '') +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"><span class="tag ok">✓ ' + ent.length + ' de ' + tot + ' já abriram o chat</span>' +
+        (semAbrir.length ? '<span class="tag aviso">' + semAbrir.length + ' enviado' + (semAbrir.length === 1 ? '' : 's') + ', ainda não abriram</span>' : '') +
+        (porEnv.length ? '<span class="tag">' + porEnv.length + ' por enviar</span>' : '') + '</div>' +
+        '<div style="height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin-bottom:8px"><div style="height:100%;width:' + pct + '%;background:#1fa855"></div></div>';
+      if (!falta.length) return h + '<div class="nota">✅ Todos abriram o chat: receberam mesmo o link.</div></div>';
+      h += '<div class="nota"><b>O WhatsApp não diz se a mensagem foi lida</b>: a confirmação verdadeira é a pessoa abrir o seu link (fica «entrou»). Ainda não abriram: ' +
+        falta.slice(0, 12).map(function (m) { return esc(m.name) + (algumEnviado(m) ? '' : ' (por enviar)'); }).join(', ') + (falta.length > 12 ? ' e mais ' + (falta.length - 12) : '') + '.</div>' +
+        '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="b' + (S.soFalta ? ' on' : '') + '" data-acao="soFalta">' + (S.soFalta ? 'Mostrar todos' : 'Mostrar só quem falta') + '</button>' +
+        '<button class="b wa" data-acao="lembrar">WhatsApp: lembrar quem não abriu</button></div></div>';
+      return h;
+    }
+
     function porEnviar() {
       return S.doc.membros.filter(function (m) { return eu({ id: m.id, name: m.name }).t && !m.entrou && !jaEnviado(m, 'wa'); });      // quem ja entrou no chat nao precisa do link
     }
@@ -419,12 +447,14 @@
       if (semTel) h = caixaContactos() + h;
       h += '<div class="caixa"><h4>Tu (régie)</h4><div class="linha">' + avatar(d.dono.nome, 'dono') + '<div class="nm">' + esc(d.dono.nome) + '<small>fixas mensagens no topo para todos</small></div><div class="ac">' +
         '<a class="b pri" href="' + esc(link(d.dono.token)) + '" target="_blank" rel="noopener">Abrir o chat</a><button class="b" data-acao="copiar" data-t="' + esc(link(d.dono.token)) + '" data-k="dono">' + (S.copiado === 'dono' ? 'Copiado ✓' : 'Copiar link') + '</button></div></div></div>';
+      h += caixaRececao();
       h += caixaConvite();
       h += caixaExternos();
       h += '<div class="caixa"><h4 style="display:flex;justify-content:space-between;align-items:center;gap:8px">Pessoas (' + d.membros.length + ')<button class="b' + (S.gerirPessoas ? ' on' : '') + '" data-acao="gerirTog" style="height:30px;text-transform:none;letter-spacing:0">' + (S.gerirPessoas ? 'Concluir' : 'Gerir pessoas') + '</button></h4>' + (S.gerirPessoas ? '<div class="nota">Aqui mudas o tipo de cada pessoa (participante, só leitura ou gestor), libertas um lugar ou retiras alguém.</div>' : '');
       var gruposG = {}; d.membros.forEach(function (m) { gruposG[m.grupo || ''] = 1; });
       var variasG = Object.keys(gruposG).length > 1;
       d.membros.forEach(function (m) {
+        if (S.soFalta && m.entrou) return;                // «Mostrar só quem falta»: quem já abriu o chat sai da lista
         var p = { id: m.id, name: m.name, grupo: m.grupo }, c = eu(p), msg = texto(m.name, m.token), acoes = '';
         function marca(canal) { return jaEnviado(m, canal) ? ' ✓' : ''; }
         if (c.t) {
@@ -619,6 +649,23 @@
       if (a === 'todosEnviados') {
         if (conf !== 'todos') { pedeConfirmar('todos'); return; }
         marcarTodosEnviados(); S.msgEnvio = ''; desenhar();
+        return;
+      }
+      if (a === 'soFalta') { S.soFalta = !S.soFalta; desenhar(); return; }
+      if (a === 'lembrar') {
+        var fila2 = S.doc.membros.filter(function (m) { return !m.entrou && eu({ id: m.id, name: m.name }).t && !S.lembrados[m.id]; });
+        if (!fila2.length) {
+          var havia = Object.keys(S.lembrados).length; S.lembrados = {};
+          S.msgEnvio = havia ? 'Já lembraste todos os que ainda não abriram (e que têm telemóvel). Toca outra vez para recomeçar.' : 'Ninguém por lembrar: quem falta não tem telemóvel (usa o lápis para o juntar) ou já abriu o chat.';
+          desenhar(); setTimeout(function () { S.msgEnvio = ''; desenhar(); }, 6000); return;
+        }
+        var m2 = fila2[0], c2 = eu({ id: m2.id, name: m2.name });
+        S.lembrados[m2.id] = 1;
+        S.msgEnvio = 'A abrir o WhatsApp de ' + m2.name + ' com o lembrete… envia e volta aqui (faltam ' + (fila2.length - 1) + ').';
+        var al2 = document.createElement('a'); al2.href = 'https://wa.me/' + c2.t + '?text=' + encodeURIComponent(textoLembrete(m2.name, m2.token)); al2.target = '_blank'; al2.rel = 'noopener';
+        document.body.appendChild(al2); al2.click(); al2.remove();
+        desenhar();
+        setTimeout(function () { S.msgEnvio = ''; desenhar(); }, 6000);
         return;
       }
       if (a === 'proxima') {
