@@ -377,6 +377,7 @@ try:
         pag2.set_viewport_size({'width': 360, 'height': 800})
         fora = pag2.evaluate("""(() => { const out = []; document.querySelectorAll('#vtch .b').forEach(b => { const c = b.closest('.caixa, .corpo'); if (!c) return; const r = b.getBoundingClientRect(), cr = c.getBoundingClientRect(); if (r.width > 0 && r.right > cr.right + 1) out.push((b.textContent || '').trim().slice(0, 40) + ' ' + Math.round(r.right - cr.right)); }); return out; })()""")
         ok(not fora, "nenhum botao do painel sai do cartao num telemovel estreito (360 px) %s" % fora)
+        ok(pag2.evaluate("(() => { const r = document.querySelector('#vtch .rodape'); if (!r) return false; return Math.abs(r.getBoundingClientRect().bottom - innerHeight) <= 2; })()"), "a barra «por enviar» fica colada ao fundo do ecra (nao a flutuar com conteudo por baixo)")
         ok(pag2.evaluate("(() => { const r = document.querySelector('#vtch .rodape'); if (!r) return true; const c = getComputedStyle(r).backgroundColor; return !/rgba\(.*, 0\)|transparent/.test(c); })()"), "a barra de baixo («por enviar») tem fundo solido: nao deixa ver nem tapa o texto por baixo")
         ok("+351 961 000 001" in t and "+351 962 000 002" in t, "Rafael (contacto «Rafael Anchieta Tecnico») e Bruno ficam com o telemovel, sem sufixos _12H")
         pag2.evaluate("document.getElementById('vtch').remove()")
