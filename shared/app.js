@@ -668,16 +668,35 @@
       return cfg.api + '/pdf/' + e.prop + '?k=' + encodeURIComponent(cfg.pin) + '&d=' + (state.dmy || '') +
         '&n=' + encodeURIComponent('OS-' + e.code + '-' + (e.event || ''));
     }
-    return null; // nas apps nativas o PDF abriria fora da sessao; so na versao web
+    return null; // nas apps nativas o PDF passa pelo Worker (pdfNativo), com a chave do dono
+  }
+
+  // PC/Android: o PDF abre-se pelo Worker (o link direto ao 7Eventos nao funciona fora da sessao da app).
+  // Pede a chave do dono uma vez (a mesma do editor) e abre o PDF no browser do sistema.
+  function pdfNativoAttrs(e) {
+    if (cfg.api || !cfg.salasApi || !e.prop) return '';
+    return ' data-pdfp="' + esc(e.prop) + '" data-pdfn="' + esc('OS-' + e.code + '-' + (e.event || '')) + '"';
+  }
+
+  function abrirPdfNativo(prop, nome) {
+    withSalasPin(function (k) {
+      var sh = document.getElementById('sheet');
+      if (sh && sh.querySelector('#spForm')) sh.classList.remove('open');
+      var u = cfg.salasApi + '/pdf/' + encodeURIComponent(prop) + '?k=' + encodeURIComponent(k) + '&d=' + (state.dmy || '') + '&n=' + encodeURIComponent(nome);
+      var a = document.createElement('a'); a.href = u; a.target = '_blank'; a.rel = 'noopener';
+      document.body.appendChild(a); a.click(); a.remove();
+    });
   }
 
   function pdfButton(e) {
     var u = pdfUrl(e);
+    if (!u && pdfNativoAttrs(e)) return '<a class="pdf" href="#"' + pdfNativoAttrs(e) + '><span>PDF</span>Proposta técnica</a>';
     return u ? '<a class="pdf" href="' + esc(u) + '" target="_blank" rel="noopener"><span>PDF</span>Proposta técnica</a>' : '';
   }
 
   function pdfPill(e) {
     var u = pdfUrl(e);
+    if (!u && pdfNativoAttrs(e)) return '<a class="pdfs" href="#"' + pdfNativoAttrs(e) + ' title="Proposta técnica (PDF)">PDF</a>';
     return u ? '<a class="pdfs" href="' + esc(u) + '" target="_blank" rel="noopener" title="Proposta técnica (PDF)">PDF</a>' : '';
   }
 
@@ -849,6 +868,13 @@
   document.querySelectorAll('.seg button').forEach(function (b) {
     b.onclick = function () { state.view = b.dataset.view; store('vt.view', state.view); paint(true); };
   });
+  // PDF nas apps nativas (PC/Android): intercepta antes de qualquer outro clique
+  document.addEventListener('click', function (ev) {
+    var a = ev.target.closest && ev.target.closest('a[data-pdfp]');
+    if (!a) return;
+    ev.preventDefault(); ev.stopPropagation();
+    abrirPdfNativo(a.dataset.pdfp, a.dataset.pdfn || '');
+  }, true);
   document.getElementById('main').addEventListener('click', function (ev) {
     if (ev.target.closest('a.pdfs, a.pdf')) return;
     var t = ev.target.closest('[data-pick],[data-i],[data-person]');
