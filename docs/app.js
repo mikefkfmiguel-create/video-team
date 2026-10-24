@@ -656,7 +656,7 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
       }).then(function (r) { return r.json(); }).then(function (j) {
         btn.disabled = false; btn.innerHTML = was;
         if (!j.token) { if (!cfg.api) store('vt.salaspin', ''); btn.insertAdjacentHTML('afterend', '<div class="mut">' + esc(j.error || 'Não consegui criar o link.') + '</div>'); return; }
-        var base = cfg.api ? location.origin + location.pathname : (cfg.webBase || 'https://mikefkfmiguel-create.github.io/video-team/');
+        var base = cfg.api ? location.origin + location.pathname : (cfg.webBase || 'https://videoteam.mike-app.com/');
         showShareResult(e, base + '?p=' + j.token, idsDoFiltro(e).length);
       }).catch(function () { btn.disabled = false; btn.innerHTML = was; btn.insertAdjacentHTML('afterend', '<div class="mut">Sem ligação ao servidor.</div>'); });
     };

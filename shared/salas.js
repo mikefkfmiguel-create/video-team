@@ -491,7 +491,7 @@
         H('/api/admin/share', { body: { key: ctx.sig, label: ctx.titulo || 'Evento', d: ctx.anchor, ids: ctx.ids } }).then(function (r) { return r.json(); }).then(function (j) {
           if (!j.token) { S.linkMsg = j.error || 'Não consegui criar o link.'; }
           else {
-            var base = ctx.webBase || (/7eventos/i.test(location.hostname) ? 'https://mikefkfmiguel-create.github.io/video-team/' : location.origin + location.pathname);
+            var base = ctx.webBase || (/7eventos/i.test(location.hostname) ? 'https://videoteam.mike-app.com/' : location.origin + location.pathname);
             S.linkUrl = base + '?p=' + j.token; S.linkMsg = ''; S.linkCopiado = false;
           }
           paint();
