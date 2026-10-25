@@ -302,7 +302,15 @@ async function roleOf(pin, env) {
   if (await same(pin, env.VT_PIN_ADMIN)) return 'owner';
   if (await sessaoValida(env, pin)) return 'owner';          // entrou com o autenticador
   const entry = await env.FOTOS.get(`req:${pin}`, 'json');
-  if (entry && entry.status === 'approved') return entry.role || 'video';
+  if (entry && entry.status === 'approved') {
+    // «visto pela ultima vez»: no maximo 1 escrita por acesso de 10 em 10 min, sem alargar a validade
+    const agora = Date.now();
+    if (entry.expiresAt && agora - (entry.lastSeen || 0) > 600000) {
+      entry.lastSeen = agora;
+      try { await env.FOTOS.put(`req:${pin}`, JSON.stringify(entry), { expiration: Math.floor(entry.expiresAt / 1000) }); } catch (e) { /* nao e critico */ }
+    }
+    return entry.role || 'video';
+  }
   return null;
 }
 
