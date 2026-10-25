@@ -79,6 +79,7 @@ class MainActivity : Activity() {
         web.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, req: WebResourceRequest): Boolean {
                 if (req.url.host == HOST) return false
+                if (req.url.host == Uri.parse(WEB_BASE).host) return false      // painel de admin (o do site), dentro da propria app
                 // «Guardar o PDF»: fica na propria app (o DownloadListener guarda-o), em vez de abrir no navegador
                 if (req.url.host == Uri.parse(SALAS_API).host && req.url.path?.startsWith("/pdf/") == true && req.url.getQueryParameter("dl") != null) return false
                 startActivity(Intent(Intent.ACTION_VIEW, req.url))
@@ -87,6 +88,12 @@ class MainActivity : Activity() {
 
             override fun onPageFinished(view: WebView, url: String) {
                 paginaDoHost = Uri.parse(url).host == HOST
+                // painel de admin: entra ja como dono, com a chave de sessao deste aparelho
+                if (Uri.parse(url).host == Uri.parse(WEB_BASE).host && BuildConfig.VT_OWNER_TOKEN.isNotEmpty()) {
+                    val tok = BuildConfig.VT_OWNER_TOKEN
+                    view.evaluateJavascript("(function(){try{if(localStorage.getItem('vt.pin')!=='$tok'){localStorage.setItem('vt.pin','$tok');location.reload();}}catch(e){}})()", null)
+                    return
+                }
                 onPage(url)
             }
 
@@ -148,6 +155,13 @@ class MainActivity : Activity() {
      * Para nao entregar a agenda inteira, a pagina diz que nomes procura (3 letras de cada nome da equipa) e so voltam os contactos parecidos.
      */
     inner class Nativo {
+        /** Botao «Admin» da escala: abre o painel de pedidos do site, na propria app (so a partir da pagina do 7Eventos). */
+        @JavascriptInterface
+        fun abrirAdmin() {
+            if (!paginaDoHost || BuildConfig.VT_OWNER_TOKEN.isEmpty()) return
+            runOnUiThread { web.loadUrl(WEB_BASE + "?admin=pedidos") }
+        }
+
         @JavascriptInterface
         fun temPermissao(): Boolean = checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
 
@@ -249,6 +263,8 @@ class MainActivity : Activity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        // «Voltar» no painel de admin (o do site) volta a escala
+        if (Uri.parse(web.url ?: "").host == Uri.parse(WEB_BASE).host) { web.loadUrl(START); return }
         // fecha o painel de detalhe se estiver aberto, senao sai
         web.evaluateJavascript(
             "(function(){var c=document.getElementById('vtch');if(c){var x=c.querySelector('[data-acao=sair]');if(x){x.click();return 1}}var s=document.getElementById('sheet');if(s&&s.classList.contains('open')){s.classList.remove('open');return 1}return 0})()"
