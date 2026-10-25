@@ -44,6 +44,13 @@ MINI_MAX = 150_000                       # a miniatura (360 px): perto de 30 KB
 FOTOS_HORA = 20                          # fotos por pessoa por hora
 SALA_FOTOS_MAX = 400 * 1024 * 1024       # tecto de fotos por sala
 TIPOS = ('participante', 'leitura', 'gestor')   # participante le e escreve; leitura so le; gestor tambem trata dos participantes de fora e das mensagens
+# notificacoes: o que cada pessoa pode escolher (guardado no servidor, por link: vale em qualquer aparelho)
+TOQUES = ('campainha', 'alerta', 'sino', 'duplo', 'sirene', 'pop')
+VIBRAS = {'nenhuma': [], 'curta': [120], 'longa': [300, 150, 300, 150, 500],
+          'sos': [200, 100, 200, 100, 200, 300, 500, 100, 500, 100, 500, 300, 200, 100, 200, 100, 200]}
+INSISTE_OPCOES = (0, 3, 5, 10)    # minutos entre lembretes enquanto a mensagem nao for lida (0 = nunca)
+MAX_LEMBRETES = 3                 # no maximo 3 lembretes por mensagem(ns) por ler
+PREFS_PADRAO = {'toque': 'campainha', 'vibra': 'longa', 'insiste': 5, 'silencio_ini': -1, 'silencio_fim': -1}
 log = logging.getLogger('vtchat')
 # o Web Push (py_vapid, modo estrito) so aceita «mailto:». E um contacto tecnico para os servicos de push (Google, Apple, Mozilla), nao o teu email pessoal.
 VAPID_SUB_PADRAO = 'mailto:admin@mike-app.com'
@@ -101,6 +108,9 @@ class BD:
         CREATE TABLE IF NOT EXISTS uso (dia TEXT PRIMARY KEY, pedidos INTEGER NOT NULL DEFAULT 0, msgs INTEGER NOT NULL DEFAULT 0, bytes_saida INTEGER NOT NULL DEFAULT 0, ws_pico INTEGER NOT NULL DEFAULT 0, erros INTEGER NOT NULL DEFAULT 0);
         CREATE TABLE IF NOT EXISTS eventos (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, tipo TEXT NOT NULL, sala TEXT NOT NULL, evento TEXT NOT NULL, dados TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS convite (sala TEXT PRIMARY KEY REFERENCES sala(id) ON DELETE CASCADE, token TEXT NOT NULL UNIQUE, ativo INTEGER NOT NULL DEFAULT 1, criado INTEGER NOT NULL);
+        CREATE TABLE IF NOT EXISTS pref (token TEXT PRIMARY KEY, toque TEXT NOT NULL DEFAULT 'campainha', vibra TEXT NOT NULL DEFAULT 'longa', insiste INTEGER NOT NULL DEFAULT 5,
+                                         silencio_ini INTEGER NOT NULL DEFAULT -1, silencio_fim INTEGER NOT NULL DEFAULT -1,
+                                         lido_ate INTEGER NOT NULL DEFAULT 0, ult_aviso INTEGER NOT NULL DEFAULT 0, lembretes INTEGER NOT NULL DEFAULT 0);
         """)
         cols = [c['name'] for c in self.c.execute('PRAGMA table_info(membro)').fetchall()]
         if 'tipo' not in cols:
@@ -152,7 +162,8 @@ class Vapid:
     def enviar(self, sub, dados):
         from pywebpush import WebPushException, webpush
         try:
-            webpush(subscription_info=sub, data=json.dumps(dados, ensure_ascii=False), vapid_private_key=self.pem, vapid_claims={'sub': self.sub}, ttl=12 * 3600)
+            webpush(subscription_info=sub, data=json.dumps(dados, ensure_ascii=False), vapid_private_key=self.pem, vapid_claims={'sub': self.sub}, ttl=12 * 3600,
+                    headers={'Urgency': 'high'})    # urgencia alta: o Android entrega logo, mesmo com o telemovel parado (modo Doze)
             return 'ok'
         except WebPushException as e:
             code = getattr(getattr(e, 'response', None), 'status_code', None)
@@ -175,6 +186,8 @@ class Chat:
         except Exception as e:
             log.warning('Web Push desligado (%s)', e)
         self.ws = {}              # sala -> set de (ws, pid, nome, papel)
+        self.testes = {}          # token -> instante do ultimo «Testar notificacao»
+        self.oculto = set()       # ligacoes cujo ecra esta escondido (separador em segundo plano, telemovel bloqueado): para efeitos de push contam como ausentes
         self.recentes = {}        # (sala, pid) -> instantes
         self.falhas = {}          # ip -> instantes (tokens invalidos)
         self.inicio = time.time()
@@ -400,36 +413,159 @@ class Chat:
         t.add_done_callback(self.tarefas.discard)
         return m, None, 200
 
-    # ---- push: so a quem nao tem o chat aberto
+    # ---- preferencias de notificacao (por link) e leitura
+    def pref(self, token):
+        r = self.bd.um('SELECT toque, vibra, insiste, silencio_ini, silencio_fim, lido_ate, ult_aviso, lembretes FROM pref WHERE token=?', token)
+        if not r:
+            return dict(PREFS_PADRAO, lido_ate=0, ult_aviso=0, lembretes=0)
+        return {k: r[k] for k in r.keys()}
+
+    def pref_publica(self, token):
+        p = self.pref(token)
+        return {k: p[k] for k in PREFS_PADRAO}
+
+    def guardar_pref(self, token, d):
+        """Valida e grava. Devolve (prefs, erro)."""
+        p = self.pref_publica(token)
+        if 'toque' in d:
+            if d['toque'] not in TOQUES:
+                return None, 'toque'
+            p['toque'] = d['toque']
+        if 'vibra' in d:
+            if d['vibra'] not in VIBRAS:
+                return None, 'vibra'
+            p['vibra'] = d['vibra']
+        if 'insiste' in d:
+            if d['insiste'] not in INSISTE_OPCOES or isinstance(d['insiste'], bool):
+                return None, 'insiste'
+            p['insiste'] = d['insiste']
+        for k in ('silencio_ini', 'silencio_fim'):
+            if k in d:
+                v = d[k]
+                if isinstance(v, bool) or not isinstance(v, int) or not (-1 <= v <= 23):
+                    return None, k
+                p[k] = v
+        if (p['silencio_ini'] < 0) != (p['silencio_fim'] < 0):       # ou os dois ou nenhum
+            p['silencio_ini'] = p['silencio_fim'] = -1
+        self.bd.x('INSERT OR IGNORE INTO pref (token) VALUES (?)', token)
+        self.bd.x('UPDATE pref SET toque=?, vibra=?, insiste=?, silencio_ini=?, silencio_fim=? WHERE token=?', p['toque'], p['vibra'], p['insiste'], p['silencio_ini'], p['silencio_fim'], token)
+        return p, None
+
+    @staticmethod
+    def hora_lisboa(agora=None):
+        agora = agora if agora is not None else agora_ms()
+        try:
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            return datetime.fromtimestamp(agora / 1000, ZoneInfo('Europe/Lisbon')).hour
+        except Exception:
+            return time.gmtime(agora / 1000).tm_hour
+
+    def em_silencio(self, p, agora=None):
+        """Silencio noturno (horas inteiras, hora de Lisboa; pode atravessar a meia-noite)."""
+        a, b = p['silencio_ini'], p['silencio_fim']
+        if a < 0 or b < 0 or a == b:
+            return False
+        h = self.hora_lisboa(agora)
+        return (a <= h < b) if a < b else (h >= a or h < b)
+
+    def marcar_lido(self, token):
+        """A pessoa viu a conversa: nada por ler e os lembretes recomecam do zero."""
+        s = self.bd.um('SELECT COALESCE(MAX(msg.id),0) AS n FROM msg WHERE msg.sala = COALESCE((SELECT sala FROM membro WHERE token=?), (SELECT id FROM sala WHERE dono_token=?))', token, token)
+        self.bd.x('INSERT OR IGNORE INTO pref (token) VALUES (?)', token)
+        self.bd.x('UPDATE pref SET lido_ate=?, lembretes=0 WHERE token=?', s['n'] if s else 0, token)
+
+    def visiveis(self, sala):
+        """Pessoas com o chat ABERTO e o ecra a ver (uma ligacao escondida em segundo plano nao conta: essa precisa de notificacao)."""
+        return {pid for (w, pid, _n, _p) in self.ws.get(sala, set()) if w not in self.oculto}
+
+    async def _enviar_a(self, token, dados, sala):
+        n = 0
+        loop = asyncio.get_running_loop()
+        for r in self.bd.q('SELECT endpoint, p256dh, auth FROM push WHERE token=?', token):
+            res = await loop.run_in_executor(None, self.vapid.enviar, {'endpoint': r['endpoint'], 'keys': {'p256dh': r['p256dh'], 'auth': r['auth']}}, dados)
+            if res == 'ok':
+                n += 1
+                if sala:
+                    self.bd.x('UPDATE sala SET pushes=pushes+1 WHERE id=?', sala)
+            if res == 'morta':
+                self.bd.x('DELETE FROM push WHERE endpoint=?', r['endpoint'])
+            elif res != 'ok':
+                log.info('push falhou: %s', res)
+        return n
+
+    def _dados_push(self, titulo, corpo, sala, token, p, aviso=False, mid=0, lembrete=False):
+        vib = list(VIBRAS.get(p['vibra'], VIBRAS['longa']))
+        if aviso and vib:
+            vib = VIBRAS['sos'] if p['vibra'] == 'sos' else VIBRAS['longa'] + [200, 100, 500]      # um aviso fixo vibra mais
+        return {'t': titulo, 'b': corpo, 'g': sala, 'u': PREFIXO + '/#' + token,            # o clique abre o chat ja com o link pessoal (o iPhone nao partilha o armazenamento)
+                'v': vib, 'r': 1 if aviso else 0, 'a': 1 if aviso else 0, 'n': mid, 'l': 1 if lembrete else 0, 'k': p['toque']}
+
+    # ---- push: a quem nao tem o chat aberto e a ver
     async def push_ausentes(self, sala, m):
         if not self.vapid:
             return
         s = self.bd.um('SELECT evento FROM sala WHERE id=?', sala)
         if not s:
             return
-        online = set(self.presentes(sala))
+        vistos = self.visiveis(sala)
         tokens = {}
         for r in self.bd.q('SELECT pid, token FROM membro WHERE sala=?', sala):
             tokens[r['pid']] = r['token']
         d = self.bd.um('SELECT dono_token FROM sala WHERE id=?', sala)
         if d:
             tokens['dono'] = d['dono_token']
-        alvo = [t for pid, t in tokens.items() if pid not in online and pid != m['pid']]
+        for pid, token in tokens.items():             # quem esta a ver o chat ja leu
+            if pid in vistos and pid != m['pid']:
+                self.marcar_lido(token)
+        alvo = [t for pid, t in tokens.items() if pid not in vistos and pid != m['pid']]
         if not alvo:
             return
         texto = ('📷 ' + (m['texto'] or 'Foto')) if m.get('foto') else m['texto'].replace('\n', ' ')
-        base = {'t': ('📌 ' if m['aviso'] else '') + s['evento'], 'b': '%s: %s' % (m['nome'], texto[:140] + ('…' if len(texto) > 140 else '')), 'g': sala}
-        loop = asyncio.get_running_loop()
+        corpo = '%s: %s' % (m['nome'], texto[:140] + ('…' if len(texto) > 140 else ''))
+        titulo = ('📌 AVISO · ' if m['aviso'] else '') + s['evento']
+        agora = agora_ms()
         for token in alvo:
-            dados = dict(base, u=PREFIXO + '/#' + token)      # o clique abre o chat ja com o link pessoal (o iPhone nao partilha o armazenamento)
-            for r in self.bd.q('SELECT endpoint, p256dh, auth FROM push WHERE token=?', token):
-                res = await loop.run_in_executor(None, self.vapid.enviar, {'endpoint': r['endpoint'], 'keys': {'p256dh': r['p256dh'], 'auth': r['auth']}}, dados)
-                if res == 'ok':
-                    self.bd.x('UPDATE sala SET pushes=pushes+1 WHERE id=?', sala)
-                if res == 'morta':
-                    self.bd.x('DELETE FROM push WHERE endpoint=?', r['endpoint'])
-                elif res != 'ok':
-                    log.info('push falhou: %s', res)
+            p = self.pref(token)
+            self.bd.x('INSERT OR IGNORE INTO pref (token) VALUES (?)', token)
+            if self.em_silencio(p, agora) and not m['aviso']:       # silencio noturno: so os avisos fixos passam
+                continue
+            self.bd.x('UPDATE pref SET ult_aviso=?, lembretes=0 WHERE token=?', agora, token)     # o relogio dos lembretes conta a partir do ultimo aviso
+            await self._enviar_a(token, self._dados_push(titulo, corpo, sala, token, p, bool(m['aviso']), m['id']), sala)
+
+    async def lembretes(self, agora=None):
+        """Quem tem mensagens por ler e nao abriu o chat volta a ser avisado (a cada «insiste» minutos, no maximo MAX_LEMBRETES vezes)."""
+        if not self.vapid:
+            return 0
+        agora = agora if agora is not None else agora_ms()
+        enviados = 0
+        quem = self.bd.q('SELECT token, sala, pid FROM membro UNION ALL SELECT dono_token AS token, id AS sala, \'dono\' AS pid FROM sala WHERE expira > ?', agora)
+        for r in quem:
+            p = self.bd.um('SELECT * FROM pref WHERE token=?', r['token'])
+            if not p or p['insiste'] <= 0 or p['lembretes'] >= MAX_LEMBRETES or not p['ult_aviso']:
+                continue
+            if agora - p['ult_aviso'] < p['insiste'] * 60000:
+                continue
+            if r['pid'] in self.visiveis(r['sala']):
+                self.marcar_lido(r['token'])
+                continue
+            por_ler = self.bd.q('SELECT id, nome, texto, aviso, foto FROM msg WHERE sala=? AND id>? AND pid<>? AND apagada=0 ORDER BY id', r['sala'], p['lido_ate'], r['pid'])
+            if not por_ler:
+                continue
+            tem_aviso = any(x['aviso'] for x in por_ler)
+            if self.em_silencio(p, agora) and not tem_aviso:
+                continue
+            s = self.bd.um('SELECT evento FROM sala WHERE id=?', r['sala'])
+            if not s:
+                continue
+            ult = por_ler[-1]
+            txt = ('📷 ' + (ult['texto'] or 'Foto')) if ult['foto'] else (ult['texto'] or '').replace('\n', ' ')
+            corpo = '%d mensage%s por ler · %s: %s' % (len(por_ler), 'm' if len(por_ler) == 1 else 'ns', ult['nome'], txt[:100] + ('…' if len(txt) > 100 else ''))
+            pp = {k: p[k] for k in PREFS_PADRAO}
+            n = await self._enviar_a(r['token'], self._dados_push(('📌 ' if tem_aviso else '🔔 ') + s['evento'], corpo, r['sala'], r['token'], pp, tem_aviso, ult['id'], lembrete=True), r['sala'])
+            self.bd.x('UPDATE pref SET ult_aviso=?, lembretes=lembretes+1 WHERE token=?', agora, r['token'])
+            enviados += 1 if n else 0
+        return enviados
 
     # ---- limpeza
     async def fechar_ws_expiradas(self):
@@ -448,6 +584,7 @@ class Chat:
             if nome_ and pasta:
                 self.evento('expirada', i, nome_['evento'], pasta)
             self.bd.x('DELETE FROM push WHERE token IN (SELECT token FROM membro WHERE sala=?)', i)
+            self.bd.x('DELETE FROM pref WHERE token IN (SELECT token FROM membro WHERE sala=?) OR token IN (SELECT dono_token FROM sala WHERE id=?)', i, i)
             self.bd.x('DELETE FROM sala WHERE id=?', i)
             self.apagar_fotos_da_sala(i)
         if ids:
@@ -665,6 +802,7 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
         if not m:
             return json_resp({'error': 'nao encontrado'}, 404)
         chat.bd.x('DELETE FROM push WHERE token=?', m['token'])
+        chat.bd.x('DELETE FROM pref WHERE token=?', m['token'])
         chat.bd.x('DELETE FROM membro WHERE sala=? AND pid=?', sala, pid)       # o link deixa de funcionar na hora
         for (w, p, _n, _pp) in list(chat.ws.get(sala, set())):
             if p == pid:
@@ -730,6 +868,7 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
             return json_resp({'error': 'nao encontrado'}, 404)
         old = chat.bd.um('SELECT token FROM membro WHERE sala=? AND pid=?', sala, pid)['token']
         chat.bd.x('DELETE FROM push WHERE token=?', old)
+        chat.bd.x('DELETE FROM pref WHERE token=?', old)
         chat.bd.x('UPDATE membro SET reclamado=0, token=? WHERE sala=? AND pid=?', novo_token(), sala, pid)   # o aparelho de antes perde o acesso
         for (w, p_, _n, _pp) in list(chat.ws.get(sala, set())):
             if p_ == pid:
@@ -747,6 +886,7 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
         for (w, _p, _n, _pp) in list(chat.ws.get(sala, set())):
             await w.close(code=4001, message=b'sala fechada')
         chat.bd.x('DELETE FROM push WHERE token IN (SELECT token FROM membro WHERE sala=?) OR token IN (SELECT dono_token FROM sala WHERE id=?)', sala, sala)
+        chat.bd.x('DELETE FROM pref WHERE token IN (SELECT token FROM membro WHERE sala=?) OR token IN (SELECT dono_token FROM sala WHERE id=?)', sala, sala)
         chat.bd.x('DELETE FROM sala WHERE id=?', sala)                         # apaga membros e mensagens em cascata
         chat.apagar_fotos_da_sala(sala)
         chat.ws.pop(sala, None)
@@ -967,6 +1107,7 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
         if q['papel'] != 'dono' and (not m['externo'] or pid == q['pid']):
             return json_resp({'error': 'um gestor so retira pessoas de fora'}, 403)
         chat.bd.x('DELETE FROM push WHERE token=?', m['token'])
+        chat.bd.x('DELETE FROM pref WHERE token=?', m['token'])
         chat.bd.x('DELETE FROM membro WHERE sala=? AND pid=?', q['sala'], pid)
         for (w, p_, _n, _pp) in list(chat.ws.get(q['sala'], set())):
             if p_ == pid:
@@ -1018,6 +1159,36 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
         chat.bd.x('DELETE FROM push WHERE endpoint=? AND token=?', ep, q['token'])
         return json_resp({'ok': True})
 
+    # ---------------------------------------------------------- preferencias de notificacao
+    @r.get(P + '/api/prefs')
+    async def prefs_get(req):
+        q = await chat.exige(req)
+        return json_resp({**chat.pref_publica(q['token']), 'opcoes': {'toques': list(TOQUES), 'vibras': {k: v for k, v in VIBRAS.items()}, 'insiste': list(INSISTE_OPCOES), 'max_lembretes': MAX_LEMBRETES}, 'push': bool(chat.vapid)})
+
+    @r.post(P + '/api/prefs')
+    async def prefs_post(req):
+        q = await chat.exige(req)
+        corpo = await ler_json(req)
+        if not isinstance(corpo, dict):
+            return json_resp({'error': 'pedido'}, 400)
+        p, erro = chat.guardar_pref(q['token'], corpo)
+        if erro:
+            return json_resp({'error': erro}, 400)
+        return json_resp(p)
+
+    @r.post(P + '/api/push/teste')
+    async def push_teste(req):
+        q = await chat.exige(req)
+        if not chat.vapid:
+            return json_resp({'error': 'push desligado'}, 503)
+        agora = agora_ms()
+        if agora - chat.testes.get(q['token'], 0) < 8000:
+            return json_resp({'error': 'devagar'}, 429)
+        chat.testes[q['token']] = agora
+        p = chat.pref_publica(q['token'])
+        n = await chat._enviar_a(q['token'], chat._dados_push('Teste de notificação', 'Se estás a ver isto, as notificações funcionam neste aparelho.', q['sala'], q['token'], p), None)
+        return json_resp({'enviados': n, 'registados': chat.bd.um('SELECT COUNT(*) AS n FROM push WHERE token=?', q['token'])['n']})
+
     # ---------------------------------------------------------- tempo real
     @r.get(P + '/api/ws')
     async def ws_handler(req):
@@ -1028,6 +1199,7 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
         ent = (ws, q['pid'], q['nome'], q['papel'])
         chat.ws.setdefault(sala, set()).add(ent)
         chat.contar(ws_pico=sum(len(v) for v in chat.ws.values()))
+        chat.marcar_lido(q['token'])             # abrir o chat = ler
         chat.bd.x('UPDATE sala SET pico_ws=MAX(pico_ws,?) WHERE id=?', len(chat.ws.get(sala, set())), sala)
         await ws.send_str(json.dumps({'t': 'ola', **chat.listar(sala, 0), 'online': chat.presentes(sala)}, ensure_ascii=False))
         await chat.difundir(sala, {'t': 'online', 'online': chat.presentes(sala)}, exceto=ws)
@@ -1043,6 +1215,12 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
                     continue
                 if d.get('t') == 'ping':
                     await ws.send_str('{"t":"pong"}')
+                elif d.get('t') == 'vis':        # o ecra passou a estar escondido (0) ou a ver-se (1)
+                    if d.get('v'):
+                        chat.oculto.discard(ws)
+                        chat.marcar_lido(q['token'])
+                    else:
+                        chat.oculto.add(ws)
                 elif d.get('t') == 'msg':
                     # o token pode ter sido retirado entretanto
                     atual = chat.por_token(q['token'])
@@ -1055,6 +1233,7 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
                     else:
                         await ws.send_str(json.dumps({'t': 'ok', 'cid': d.get('cid'), 'id': m['id']}))
         finally:
+            chat.oculto.discard(ws)
             chat.ws.get(sala, set()).discard(ent)
             await chat.difundir(sala, {'t': 'online', 'online': chat.presentes(sala)})
         return ws
@@ -1071,9 +1250,18 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
                 except Exception:
                     log.exception('limpeza')
                 await asyncio.sleep(600)
+        async def laco_lembretes():
+            while True:
+                await asyncio.sleep(30)
+                try:
+                    await chat.lembretes()
+                except Exception:
+                    log.exception('lembretes')
         t = asyncio.ensure_future(laco())
+        t2 = asyncio.ensure_future(laco_lembretes())
         yield
         t.cancel()
+        t2.cancel()
 
     app.cleanup_ctx.append(limpeza)
     return app

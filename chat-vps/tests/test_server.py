@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import re
 import sys
 import tempfile
 import time
@@ -16,6 +17,7 @@ sys.path.insert(0, os.path.join(AQUI, '..'))
 import server as S  # noqa: E402
 
 SEGREDO = 'segredo-de-teste'
+TELEFONE = re.compile(r'(?<![0-9A-Za-z])(\+?351)?9[1236]\d{7}(?![0-9A-Za-z])')      # um telemovel portugues (os links hex nunca casam: tem letras coladas)
 falhas = 0
 
 
@@ -156,6 +158,105 @@ async def main():
             assinou = False
             print('   erro:', e)
         ok(assinou and chat.vapid.sub.startswith('mailto:'), 'a assinatura VAPID aceita o contacto configurado (%s)' % chat.vapid.sub)
+
+        # ---- notificacoes: preferencias, urgencia, ecra escondido, lembretes, silencio, teste
+        import pywebpush
+        capt = {}
+        orig_webpush = pywebpush.webpush
+        pywebpush.webpush = lambda **kw: capt.update(kw)
+        try:
+            S.Vapid.enviar(chat.vapid, {'endpoint': 'https://push.exemplo/x', 'keys': {'p256dh': 'a', 'auth': 'b'}}, {'t': 'x'})
+        finally:
+            pywebpush.webpush = orig_webpush
+        ok((capt.get('headers') or {}).get('Urgency') == 'high' and capt.get('ttl') == 12 * 3600, 'o push sai com urgencia alta (o Android entrega logo, mesmo parado)')
+
+        s, pf = await api('GET', '/chat/api/prefs', k=tok['12'])
+        ok(s == 200 and pf['toque'] == 'campainha' and pf['vibra'] == 'longa' and pf['insiste'] == 5 and pf['silencio_ini'] == -1 and 'sirene' in pf['opcoes']['toques'] and pf['opcoes']['max_lembretes'] == 3, 'preferencias por omissao (toque, vibracao longa, lembrete aos 5 min)')
+        ok((await api('GET', '/chat/api/prefs'))[0] == 401, 'preferencias: sem link, 401')
+        for mau in ({'toque': 'xx'}, {'vibra': 'xx'}, {'insiste': 7}, {'insiste': True}, {'silencio_ini': 24}, {'silencio_ini': 'a'}, {'silencio_fim': 1.5}):
+            ok((await api('POST', '/chat/api/prefs', k=tok['12'], corpo=mau))[0] == 400, 'preferencia invalida recusada %s' % json.dumps(mau))
+        s, pf = await api('POST', '/chat/api/prefs', k=tok['12'], corpo={'toque': 'sirene', 'vibra': 'sos', 'insiste': 3, 'silencio_ini': 23, 'silencio_fim': 7})
+        ok(s == 200 and pf == {'toque': 'sirene', 'vibra': 'sos', 'insiste': 3, 'silencio_ini': 23, 'silencio_fim': 7}, 'guardar as preferencias')
+        s, pf = await api('POST', '/chat/api/prefs', k=tok['12'], corpo={'silencio_ini': -1})
+        ok(pf['silencio_ini'] == -1 and pf['silencio_fim'] == -1, 'silencio so com inicio e fim (um sozinho desliga os dois)')
+        s, pf = await api('POST', '/chat/api/prefs', k=tok['12'], corpo={'silencio_ini': -1, 'silencio_fim': -1, 'vibra': 'longa'})
+        ok(pf['vibra'] == 'longa', 'preferencias voltam a longa')
+        s, outro = await api('GET', '/chat/api/prefs', k=tok['13'])
+        ok(outro['toque'] == 'campainha' and outro['insiste'] == 5, 'as preferencias sao de cada pessoa')
+
+        # o ecra da Ana passa a estar escondido (separador em segundo plano): ja conta como ausente e recebe push
+        envios.clear()
+        await wa.send_str(json.dumps({'t': 'vis', 'v': 0}))
+        ok(await esperar(lambda: len(chat.oculto) == 1), 'o servidor sabe que o ecra da Ana esta escondido')
+        await api('POST', '/chat/api/enviar', k=c['dono']['token'], corpo={'texto': 'passem pela régie'})
+        ok(await esperar(lambda: any(e.endswith('/ana') for e, _d in envios)), 'push tambem a quem tem o chat aberto mas escondido')
+        envios.clear()
+        await wa.send_str(json.dumps({'t': 'vis', 'v': 1}))
+        ok(await esperar(lambda: len(chat.oculto) == 0), 'o ecra da Ana volta a ver-se')
+        await api('POST', '/chat/api/enviar', k=c['dono']['token'], corpo={'texto': 'obrigado'})
+        await asyncio.sleep(0.3)
+        ok(not any(e.endswith('/ana') for e, _d in envios), 'com o ecra a ver, sem push')
+
+        # vibracao e aviso no pacote do push
+        await api('POST', '/chat/api/prefs', k=tok['12'], corpo={'insiste': 3})
+        envios.clear()
+        await api('POST', '/chat/api/enviar', k=c['dono']['token'], corpo={'texto': 'reunião às 9h'})
+        ok(await esperar(lambda: any(e.endswith('/rui') for e, _d in envios)), 'o Rui (sem o chat aberto) recebe a mensagem normal')
+        d1 = [d for e, d in envios if e.endswith('/rui')][0]
+        ok(d1['v'] == S.VIBRAS['longa'] and d1['r'] == 0 and d1['a'] == 0 and d1['k'] == 'sirene' and d1['l'] == 0 and d1['n'] > 0, 'mensagem normal: vibracao longa, nao fica fixa no ecra')
+        envios.clear()
+        await api('POST', '/chat/api/enviar', k=c['dono']['token'], corpo={'texto': 'ATENÇÃO mudança de sala', 'aviso': True})
+        ok(await esperar(lambda: any(e.endswith('/rui') for e, _d in envios)), 'aviso fixo chega')
+        d2 = [d for e, d in envios if e.endswith('/rui')][0]
+        ok(d2['t'].startswith('📌 AVISO') and d2['r'] == 1 and d2['a'] == 1 and len(d2['v']) > len(S.VIBRAS['longa']), 'aviso fixo: titulo AVISO, fica no ecra e vibra mais')
+
+        # lembretes enquanto nao ler: 3 minutos entre avisos, no maximo 3
+        p0 = chat.pref(tok['12'])
+        ult = p0['ult_aviso']
+        envios.clear()
+        ok(await chat.lembretes(ult + 2 * 60000) == 0 and not any(e.endswith('/rui') for e, _d in envios), 'lembretes: ainda cedo (2 min), nada')
+        ok(await chat.lembretes(ult + 3 * 60000 + 1) >= 1, 'lembretes: passados 3 minutos volta a avisar')
+        dl = [d for e, d in envios if e.endswith('/rui')]
+        ok(dl and dl[-1]['l'] == 1 and 'por ler' in dl[-1]['b'] and dl[-1]['a'] == 1, 'o lembrete diz quantas mensagens por ler (e como ha um aviso por ler, fica no ecra)')
+        t_ = chat.pref(tok['12'])['ult_aviso']
+        await chat.lembretes(t_ + 3 * 60000 + 1)
+        t_ = chat.pref(tok['12'])['ult_aviso']
+        await chat.lembretes(t_ + 3 * 60000 + 1)
+        t_ = chat.pref(tok['12'])['ult_aviso']
+        envios.clear()
+        ok(chat.pref(tok['12'])['lembretes'] == 3 and await chat.lembretes(t_ + 60 * 60000) == 0 and not any(e.endswith('/rui') for e, _d in envios), 'lembretes: no maximo 3')
+        chat.marcar_lido(tok['12'])
+        ok(chat.pref(tok['12'])['lembretes'] == 0 and await chat.lembretes(t_ + 120 * 60000) == 0, 'depois de ler, nada por ler: sem lembretes')
+
+        # «nunca insistir» e silencio noturno
+        await api('POST', '/chat/api/prefs', k=tok['12'], corpo={'insiste': 0})
+        envios.clear()
+        await api('POST', '/chat/api/enviar', k=c['dono']['token'], corpo={'texto': 'mais uma'})
+        ok(await esperar(lambda: any(e.endswith('/rui') for e, _d in envios)), 'insiste=0: a mensagem chega na mesma')
+        u2 = chat.pref(tok['12'])['ult_aviso']
+        envios.clear()
+        ok(await chat.lembretes(u2 + 600 * 60000) == 0 and not any(e.endswith('/rui') for e, _d in envios), 'insiste=0: nunca ha lembretes')
+        h = chat.hora_lisboa()
+        await api('POST', '/chat/api/prefs', k=tok['12'], corpo={'insiste': 5, 'silencio_ini': h, 'silencio_fim': (h + 2) % 24})
+        ok(chat.em_silencio(chat.pref(tok['12'])), 'silencio noturno ativo na hora atual')
+        envios.clear()
+        await api('POST', '/chat/api/enviar', k=c['dono']['token'], corpo={'texto': 'conversa normal'})
+        await asyncio.sleep(0.4)
+        ok(not any(e.endswith('/rui') for e, _d in envios), 'em silencio nao chega a mensagem normal')
+        await api('POST', '/chat/api/enviar', k=c['dono']['token'], corpo={'texto': 'URGENTE fixo', 'aviso': True})
+        ok(await esperar(lambda: any(e.endswith('/rui') for e, _d in envios)), 'mas o aviso fixo passa o silencio')
+        ok(chat.em_silencio({'silencio_ini': 22, 'silencio_fim': 7}, 1_700_000_000_000 + 0) in (True, False) and chat.em_silencio({'silencio_ini': 5, 'silencio_fim': 5}) is False and chat.em_silencio({'silencio_ini': -1, 'silencio_fim': -1}) is False, 'silencio: intervalos invalidos nao silenciam')
+        await api('POST', '/chat/api/prefs', k=tok['12'], corpo={'silencio_ini': -1, 'silencio_fim': -1})
+
+        # botao «Testar notificacao»
+        envios.clear()
+        s, tj = await api('POST', '/chat/api/push/teste', k=tok['12'])
+        ok(s == 200 and tj['enviados'] == 1 and tj['registados'] == 1 and any(e.endswith('/rui') and d['t'] == 'Teste de notificação' for e, d in envios), 'testar notificacao chega ao aparelho')
+        ok((await api('POST', '/chat/api/push/teste', k=tok['12']))[0] == 429, 'testar notificacao: devagar (8 s entre testes)')
+        ok((await api('POST', '/chat/api/push/teste'))[0] == 401, 'testar notificacao: sem link, 401')
+        s, tj = await api('POST', '/chat/api/push/teste', k=tok['13'])
+        ok(s == 200 and tj['enviados'] == 0 and tj['registados'] == 0, 'sem aparelho registado: 0 enviados e 0 registados (a pagina avisa)')
+        chat.bd.x("DELETE FROM msg WHERE texto IN ('ATENÇÃO mudança de sala', 'URGENTE fixo')")      # os avisos destes testes nao ficam nas «fixas» dos testes seguintes
 
         # ---- regie
         s, f = await api('GET', '/chat/api/sala', k=tok['13'])
@@ -355,7 +456,7 @@ async def main():
         ok((await api('POST', '/chat/api/admin/enviado', admin=SEGREDO, corpo={'key': KEY, 'id': '999', 'canal': 'wa'}))[0] == 404, 'pessoa que nao existe: 404')
         s_, vv = await api('GET', '/chat/api/admin/ver?key=' + KEY, admin=SEGREDO)
         ok([m for m in vv['membros'] if m['id'] == '13'][0]['enviado'] == ['wa'], 'ao voltar a abrir o painel a marca la esta (sobrevive a reinstalar a app)')
-        ok('912' not in json.dumps(vv), 'e nao ha telefones no servidor')
+        ok(not TELEFONE.search(json.dumps(vv)), 'e nao ha telefones no servidor')
         ok(isinstance(vv.get('online'), list) and len(vv['online']) >= 1 and set(vv['online']) <= {m['id'] for m in vv['membros']} | {'dono'}, 'o painel do dono recebe quem esta ligado agora (referencia real do servidor)')
 
         # ---- fotos (ja reduzidas pelo telemovel): ficheiros no disco, limites, permissoes, apagadas com a sala
@@ -488,7 +589,7 @@ async def main():
         n_ev = chat.bd.um('SELECT COUNT(*) AS n FROM eventos')['n']
         ok(chat.limpar_expiradas(pasta) >= 1 and chat.bd.um("SELECT COUNT(*) AS n FROM eventos WHERE tipo='expirada'")['n'] == 1, 'a limpeza regista «expirada» (apagada sozinha) com a foto do peso')
         ok(chat.bd.um('SELECT 1 FROM sala WHERE id=?', nova['sala']) is None, 'a limpeza apaga as salas expiradas')
-        ok('912' not in open(os.path.join(pasta, 'chat.db'), 'rb').read().decode('latin-1'), 'a base de dados nao tem telefones')
+        ok(not TELEFONE.search(open(os.path.join(pasta, 'chat.db'), 'rb').read().decode('latin-1')), 'a base de dados nao tem telefones')
 
     await srv.close()
     print('\nfalhas: %d' % falhas)
