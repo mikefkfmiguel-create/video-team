@@ -679,19 +679,22 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
     return ' data-pdfp="' + esc(e.prop) + '" data-pdfn="' + esc('OS-' + e.code + '-' + (e.event || '')) + '"';
   }
 
-  function abrirPdfNativo(prop, nome) {
+  // guardar=true: o Worker responde com «attachment» (dl=1) e a propria app guarda o ficheiro (Android: pasta Transferencias; PC: janela «Guardar como»)
+  function abrirPdfNativo(prop, nome, guardar) {
     withSalasPin(function (k) {
       var sh = document.getElementById('sheet');
       if (sh && sh.querySelector('#spForm')) sh.classList.remove('open');
-      var u = cfg.salasApi + '/pdf/' + encodeURIComponent(prop) + '?k=' + encodeURIComponent(k) + '&d=' + (state.dmy || '') + '&n=' + encodeURIComponent(nome);
-      var a = document.createElement('a'); a.href = u; a.target = '_blank'; a.rel = 'noopener';
+      var u = cfg.salasApi + '/pdf/' + encodeURIComponent(prop) + '?k=' + encodeURIComponent(k) + '&d=' + (state.dmy || '') + '&n=' + encodeURIComponent(nome) + (guardar ? '&dl=1' : '');
+      var a = document.createElement('a'); a.href = u;
+      if (!guardar) { a.target = '_blank'; a.rel = 'noopener'; }
       document.body.appendChild(a); a.click(); a.remove();
     });
   }
 
   function pdfButton(e) {
     var u = pdfUrl(e);
-    if (!u && pdfNativoAttrs(e)) return '<a class="pdf" href="#"' + pdfNativoAttrs(e) + '><span>PDF</span>Proposta técnica</a>';
+    if (!u && pdfNativoAttrs(e)) return '<a class="pdf" href="#"' + pdfNativoAttrs(e) + '><span>PDF</span>Proposta técnica</a>' +
+      '<a class="pdf share" href="#" data-pdfg="1"' + pdfNativoAttrs(e) + ' style="margin-top:6px"><span>GUARDAR</span>Guardar o PDF neste aparelho</a>';
     return u ? '<a class="pdf" href="' + esc(u) + '" target="_blank" rel="noopener"><span>PDF</span>Proposta técnica</a>' : '';
   }
 
@@ -874,7 +877,7 @@ window.VideoTeam = // Video Team — vista propria da escala do 7Eventos.
     var a = ev.target.closest && ev.target.closest('a[data-pdfp]');
     if (!a) return;
     ev.preventDefault(); ev.stopPropagation();
-    abrirPdfNativo(a.dataset.pdfp, a.dataset.pdfn || '');
+    abrirPdfNativo(a.dataset.pdfp, a.dataset.pdfn || '', !!a.dataset.pdfg);
   }, true);
   document.getElementById('main').addEventListener('click', function (ev) {
     if (ev.target.closest('a.pdfs, a.pdf')) return;
