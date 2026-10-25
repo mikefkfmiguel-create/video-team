@@ -494,7 +494,7 @@ export default {
         }
         const name = (url.searchParams.get('n') || `proposta-${id}`).replace(/[^\w.-]+/g, '_');
         return new Response(pdf.body, {
-          headers: { ...h, 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${name}.pdf"`, 'Cache-Control': 'private, max-age=600' },
+          headers: { ...h, 'Content-Type': 'application/pdf', 'Content-Disposition': `${url.searchParams.get('dl') ? 'attachment' : 'inline'}; filename="${name}.pdf"`, 'Cache-Control': 'private, max-age=600' },
         });
       }
 

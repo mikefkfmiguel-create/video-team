@@ -79,6 +79,8 @@ class MainActivity : Activity() {
         web.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, req: WebResourceRequest): Boolean {
                 if (req.url.host == HOST) return false
+                // «Guardar o PDF»: fica na propria app (o DownloadListener guarda-o), em vez de abrir no navegador
+                if (req.url.host == Uri.parse(SALAS_API).host && req.url.path?.startsWith("/pdf/") == true && req.url.getQueryParameter("dl") != null) return false
                 startActivity(Intent(Intent.ACTION_VIEW, req.url))
                 return true
             }
@@ -93,6 +95,22 @@ class MainActivity : Activity() {
                 view.loadDataWithBaseURL(
                     "http://$HOST/", offlineHtml(err.description.toString()), "text/html", "utf-8", null
                 )
+            }
+        }
+
+        // PDF guardado: vai para a pasta Transferencias do aparelho, com notificacao do Android
+        web.setDownloadListener { url, _, disposicao, mime, _ ->
+            try {
+                val nome = Regex("filename=\"?([^\";]+)\"?").find(disposicao ?: "")?.groupValues?.get(1) ?: "proposta.pdf"
+                val pedido = android.app.DownloadManager.Request(Uri.parse(url))
+                    .setMimeType(mime ?: "application/pdf")
+                    .setTitle(nome)
+                    .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                    .setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, nome)
+                (getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager).enqueue(pedido)
+                Toast.makeText(this, "PDF guardado em Transferências: $nome", Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Toast.makeText(this, "Não consegui guardar o PDF.", Toast.LENGTH_LONG).show()
             }
         }
 
