@@ -171,6 +171,22 @@ try:
         ana.select_option  # (so para o leitor: o painel fecha e a conversa continua)
         ok(ana.evaluate("typeof window.AudioContext !== 'undefined'"), 'o navegador deixa tocar o toque dentro da pagina')
 
+        # ---- notificacoes bloqueadas no navegador: a pagina explica em vez de um alert() seco
+        bloq = pc.new_page()
+        dialogos = []
+        bloq.on('dialog', lambda d: (dialogos.append(d.message), d.dismiss()))
+        bloq.goto(B + '/chat/#' + tok['2'])
+        bloq.wait_for_selector('#app:not([hidden])', timeout=8000)
+        bloq.wait_for_function("!document.getElementById('btSino').hidden", timeout=8000)
+        ok(bloq.evaluate("Notification.permission") != 'granted', 'ponto de partida: o navegador nao deu permissao')
+        bloq.click('#btSino')
+        bloq.wait_for_function("!document.getElementById('dica').hidden && /bloqueadas|Partilhar/.test(document.getElementById('dicaTxt').textContent)", timeout=8000)
+        ok('Permissões' in bloq.inner_text('#dicaTxt') and bloq.is_visible('#dicaSim') and 'Já permiti' in bloq.inner_text('#dicaSim') and not dialogos, 'bloqueadas: a faixa diz o caminho (Permissoes > Notificacoes > Permitir) e tem «Ja permiti», sem alert()')
+        bloq.click('#dicaSim')
+        bloq.wait_for_function("/Ainda estão bloqueadas/.test(document.getElementById('dicaTxt').textContent)", timeout=8000)
+        ok(True, 'se continua bloqueado, «Ja permiti» diz que ainda esta bloqueado')
+        bloq.close()
+
         # ---- conversa
         ana.fill('#texto', 'Chego às 8h, entrada B https://exemplo.pt/mapa')
         ana.click('#enviar')
