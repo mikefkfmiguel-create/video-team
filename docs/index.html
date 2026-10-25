@@ -252,15 +252,9 @@
     if (!it.email || it.role === 'project') return '';
     var nivel = ROLE_LABEL[it.role] ? ' como ' + ROLE_LABEL[it.role] : '';
     var ate = it.expiresAt ? ' e fica ativo até ' + when(it.expiresAt) : '';
-    var corpo = 'Olá ' + (it.name || '').split(' ')[0] + ',
-
-O teu acesso ao Video Team foi aprovado' + nivel + ate + '.
-
-' +
+    var corpo = 'Olá ' + (it.name || '').split(' ')[0] + ',\n\nO teu acesso ao Video Team foi aprovado' + nivel + ate + '.\n\n' +
       'Para entrares, abre ' + location.origin + '/ no mesmo aparelho e navegador em que pediste o acesso — entra sozinho. ' +
-      'Se não entrar, responde-me a este email.
-
-Mike';
+      'Se não entrar, responde-me a este email.\n\nMike';
     var href = 'mailto:' + encodeURIComponent(it.email) + '?subject=' + encodeURIComponent('Acesso ao Video Team aprovado') + '&body=' + encodeURIComponent(corpo);
     return '<a class="resp" href="' + esc(href) + '" target="_blank" rel="noopener" title="Escrever ao ' + esc(it.name || '') + ' a dizer que foi aprovado">Responder</a>';
   }
