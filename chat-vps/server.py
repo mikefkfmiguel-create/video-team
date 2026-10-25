@@ -479,10 +479,10 @@ class Chat:
         """Pessoas com o chat ABERTO e o ecra a ver (uma ligacao escondida em segundo plano nao conta: essa precisa de notificacao)."""
         return {pid for (w, pid, _n, _p) in self.ws.get(sala, set()) if w not in self.oculto}
 
-    async def _enviar_a(self, token, dados, sala):
+    async def _enviar_a(self, token, dados, sala, endpoint=None):
         n = 0
         loop = asyncio.get_running_loop()
-        for r in self.bd.q('SELECT endpoint, p256dh, auth FROM push WHERE token=?', token):
+        for r in self.bd.q('SELECT endpoint, p256dh, auth FROM push WHERE token=?' + (' AND endpoint=?' if endpoint else ''), *((token, endpoint) if endpoint else (token,))):
             res = await loop.run_in_executor(None, self.vapid.enviar, {'endpoint': r['endpoint'], 'keys': {'p256dh': r['p256dh'], 'auth': r['auth']}}, dados)
             if res == 'ok':
                 n += 1
@@ -1185,9 +1185,21 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
         if agora - chat.testes.get(q['token'], 0) < 8000:
             return json_resp({'error': 'devagar'}, 429)
         chat.testes[q['token']] = agora
+        try:
+            corpo = await ler_json(req)
+        except Exception:
+            corpo = {}
+        ep = str((corpo or {}).get('endpoint') or '')[:600] if isinstance(corpo, dict) else ''
+        registados = chat.bd.um('SELECT COUNT(*) AS n FROM push WHERE token=?', q['token'])['n']
+        este = None
+        if ep:                                     # «testar neste aparelho»: so a subscricao deste navegador (tem de ser do mesmo link)
+            este = bool(chat.bd.um('SELECT 1 FROM push WHERE token=? AND endpoint=?', q['token'], ep))
+            if not este:
+                return json_resp({'enviados': 0, 'registados': registados, 'este': False})
         p = chat.pref_publica(q['token'])
-        n = await chat._enviar_a(q['token'], chat._dados_push('Teste de notificação', 'Se estás a ver isto, as notificações funcionam neste aparelho.', q['sala'], q['token'], p), None)
-        return json_resp({'enviados': n, 'registados': chat.bd.um('SELECT COUNT(*) AS n FROM push WHERE token=?', q['token'])['n']})
+        txt = 'Se estás a ver isto, as notificações funcionam neste aparelho.' if ep else 'Teste enviado a todos os teus aparelhos registados.'
+        n = await chat._enviar_a(q['token'], chat._dados_push('Teste de notificação', txt, q['sala'], q['token'], p), None, ep or None)
+        return json_resp({'enviados': n, 'registados': registados, 'este': este})
 
     # ---------------------------------------------------------- tempo real
     @r.get(P + '/api/ws')
