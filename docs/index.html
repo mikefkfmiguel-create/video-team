@@ -50,6 +50,9 @@
   .row .acts { display: flex; gap: 6px; flex: none; }
   .row button { width: auto; height: 32px; margin: 0; padding: 0 10px; font-size: 12px; border-radius: 7px; }
   .row button.no { background: var(--soft); color: var(--ink); }
+  .row { flex-wrap: wrap; }
+  .row .acts { flex-wrap: wrap; }
+  .row a.resp { display: inline-flex; align-items: center; height: 32px; padding: 0 10px; font-size: 12px; font-weight: 600; border-radius: 7px; background: var(--acc); color: #fff; text-decoration: none; }
   .row button.adm { background: var(--soft); color: var(--acc); }
   .badge { background: var(--acc); color: #fff; border-radius: 999px; font-size: 11px; padding: 1px 7px; margin-left: 6px; }
   .empty2 { color: var(--mut); font-size: 13px; padding: 6px 2px; }
@@ -227,7 +230,7 @@
         var badge = ROLE_LABEL[it.role] ? '<span class="badge">' + ROLE_LABEL[it.role] + '</span>' : '';
         // so revoga quem estiver estritamente abaixo do teu nivel
         var canRevoke = (RANK[it.role || 'video'] || 0) < myRank;
-        return badge + (canRevoke ? actBtn(it.token, 'revoke', 'no', 'Revogar') : '');
+        return badge + respostaLink(it) + (canRevoke ? actBtn(it.token, 'revoke', 'no', 'Revogar') : '');
       }, 'Ainda ninguém.', function (it) { return it.expiresAt ? ' · expira ' + when(it.expiresAt) : ''; });
       html += section('Projetos partilhados', groups.projects, function (it) {
         return actBtn(it.token, 'revoke', 'no', 'Revogar');
@@ -242,6 +245,24 @@
         };
       });
     }).catch(function () {});
+  }
+
+  // «Responder»: abre o programa de correio (ou o Gmail) com o email da pessoa e a mensagem de acesso aprovado ja escrita
+  function respostaLink(it) {
+    if (!it.email || it.role === 'project') return '';
+    var nivel = ROLE_LABEL[it.role] ? ' como ' + ROLE_LABEL[it.role] : '';
+    var ate = it.expiresAt ? ' e fica ativo até ' + when(it.expiresAt) : '';
+    var corpo = 'Olá ' + (it.name || '').split(' ')[0] + ',
+
+O teu acesso ao Video Team foi aprovado' + nivel + ate + '.
+
+' +
+      'Para entrares, abre ' + location.origin + '/ no mesmo aparelho e navegador em que pediste o acesso — entra sozinho. ' +
+      'Se não entrar, responde-me a este email.
+
+Mike';
+    var href = 'mailto:' + encodeURIComponent(it.email) + '?subject=' + encodeURIComponent('Acesso ao Video Team aprovado') + '&body=' + encodeURIComponent(corpo);
+    return '<a class="resp" href="' + esc(href) + '" target="_blank" rel="noopener" title="Escrever ao ' + esc(it.name || '') + ' a dizer que foi aprovado">Responder</a>';
   }
 
   function actBtn(token, act, cls, label, role) {

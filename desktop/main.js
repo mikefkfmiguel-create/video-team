@@ -18,6 +18,7 @@ function abrirAdmin(token) {
     w.webContents.executeJavaScript(`(function(){try{if(localStorage.getItem('vt.pin')!==${JSON.stringify(token)}){localStorage.setItem('vt.pin',${JSON.stringify(token)});location.reload();}}catch(e){}})()`).catch(() => {});
   });
   w.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
+  w.webContents.on('will-navigate', (e, u) => { if (/^mailto:/i.test(u)) { e.preventDefault(); shell.openExternal(u); } });
   w.loadURL(ADMIN_URL);
 }
 
