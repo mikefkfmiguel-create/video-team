@@ -5,6 +5,16 @@
     <!-- Chat do evento: so para ligar os numeros dos contactos aos nomes da equipa (pedida ao tocar em «Sincronizar», como no WhatsApp) -->
     <uses-permission android:name="android.permission.READ_CONTACTS" />
 
+    <queries>
+        <!-- o botao 🔔 precisa de saber se o Chrome (ou o navegador por omissao) esta instalado -->
+        <package android:name="com.android.chrome" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+
     <application
         android:label="Video Team"
         android:icon="@mipmap/ic_launcher"
