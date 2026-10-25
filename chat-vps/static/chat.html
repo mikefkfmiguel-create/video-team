@@ -21,7 +21,7 @@
   body { background: var(--bg); color: var(--ink); font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overscroll-behavior: none; }
   [hidden] { display: none !important; }
   #app { position: fixed; top: 0; bottom: 0; left: 0; right: 0; width: min(100%, 720px); margin: 0 auto; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
-  #lista, #fixas, #folha .cx { overscroll-behavior: contain; }
+  #lista, #fixas, #folha .cx, #defs .cx { overscroll-behavior: contain; }
   header { flex: none; display: flex; align-items: center; gap: 10px; padding: 10px 14px; padding-top: max(10px, env(safe-area-inset-top)); background: var(--panel); border-bottom: 1px solid var(--line); }
   .logo { width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg, var(--acc2), var(--acc)); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 13px; flex: none; letter-spacing: .03em; }
   .tit { min-width: 0; flex: 1; }
@@ -102,10 +102,22 @@
   #modoAviso { flex: none; width: 40px; height: 40px; padding: 0; border: 1px solid var(--aviso-line); border-radius: 50%; background: var(--aviso); color: var(--aviso-ink); font: inherit; font-size: 17px; line-height: 1; cursor: pointer; }
   #modoAviso[aria-pressed=true] { background: #f5b800; color: #2a1d00; border-color: #f5b800; box-shadow: 0 0 0 3px rgba(245,184,0,.35); }
   /* folha com a lista de pessoas */
-  #folha { position: fixed; inset: 0; z-index: 10; background: rgba(0,0,0,.5); display: flex; align-items: flex-end; justify-content: center; }
-  #folha .cx { width: min(520px, 100%); max-height: 78dvh; overflow: auto; background: var(--panel); border-radius: 18px 18px 0 0; padding: 16px 16px max(16px, env(safe-area-inset-bottom)); }
-  #folha h2 { margin: 0 0 10px; font-size: 17px; display: flex; justify-content: space-between; align-items: center; }
-  #folha h2 button { border: 0; background: var(--soft); color: var(--ink); width: 34px; height: 34px; border-radius: 9px; font-size: 16px; cursor: pointer; }
+  #folha, #defs { position: fixed; inset: 0; z-index: 10; background: rgba(0,0,0,.5); display: flex; align-items: flex-end; justify-content: center; }
+  #folha .cx, #defs .cx { width: min(520px, 100%); max-height: 78dvh; overflow: auto; background: var(--panel); border-radius: 18px 18px 0 0; padding: 16px 16px max(16px, env(safe-area-inset-bottom)); }
+  #folha h2, #defs h2 { margin: 0 0 10px; font-size: 17px; display: flex; justify-content: space-between; align-items: center; }
+  #folha h2 button, #defs h2 button { border: 0; background: var(--soft); color: var(--ink); width: 34px; height: 34px; border-radius: 9px; font-size: 16px; cursor: pointer; }
+  /* definicoes de notificacao */
+  .df { margin: 0 0 14px; }
+  .df label { display: block; font-size: 13px; font-weight: 600; margin: 0 0 5px; }
+  .df .lin { display: flex; gap: 8px; align-items: center; }
+  .df select { flex: 1; min-width: 0; height: 40px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); color: var(--ink); font: inherit; padding: 0 8px; }
+  .df .lin button, #dfTeste { height: 40px; border: 0; border-radius: 9px; background: var(--soft); color: var(--ink); font: inherit; padding: 0 12px; cursor: pointer; white-space: nowrap; }
+  #dfTeste { width: 100%; background: var(--acc); color: #fff; font-weight: 600; }
+  .df small { display: block; color: var(--mut); font-size: 12px; margin-top: 4px; }
+  #dfMsg { min-height: 18px; font-size: 13px; margin: 8px 0 12px; }
+  #defs details { font-size: 13px; color: var(--mut); border-top: 1px solid var(--line); padding-top: 10px; }
+  #defs summary { cursor: pointer; color: var(--ink); font-weight: 600; }
+  #defs details p { margin: 8px 0 0; }
   .pessoa { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid var(--line); }
   .pessoa .n { flex: 1; min-width: 0; }
   .pessoa .n small { display: block; color: var(--mut); font-size: 12px; }
@@ -156,6 +168,7 @@
     <div class="logo">VT</div>
     <div class="tit"><b id="evento">Chat</b><span id="sub"><i id="pt"></i><span id="subTxt"></span></span></div>
     <button class="ib" id="btSino" aria-label="Notificações" title="Notificações" hidden>🔔</button>
+    <button class="ib" id="btDefs" aria-label="Definições das notificações" title="Toques, vibração e lembretes">⚙</button>
     <button class="ib" id="btPessoas" aria-label="Quem está no chat" title="Pessoas">👥</button>
   </header>
   <div id="estado" role="status" hidden></div>
@@ -183,6 +196,24 @@
 
 <div id="folha" hidden role="dialog" aria-modal="true" aria-label="Pessoas">
   <div class="cx"><h2><span id="folhaTit">Pessoas</span><button id="fechaFolha" aria-label="Fechar">✕</button></h2><div id="gestaoBox" hidden></div><div id="pessoas"></div></div>
+</div>
+
+<div id="defs" hidden role="dialog" aria-modal="true" aria-label="Notificações">
+  <div class="cx">
+    <h2><span>Notificações</span><button id="fechaDefs" aria-label="Fechar">✕</button></h2>
+    <div class="df"><label for="dfToque">Toque (quando chega uma mensagem com o chat aberto)</label><div class="lin"><select id="dfToque"></select><button id="dfOuvir" type="button">▶ Ouvir</button></div></div>
+    <div class="df"><label for="dfVibra">Vibração</label><div class="lin"><select id="dfVibra"></select><button id="dfSentir" type="button">Sentir</button></div></div>
+    <div class="df"><label for="dfInsiste">Se eu não ler, avisar outra vez</label><select id="dfInsiste"></select><small id="dfInsisteTxt"></small></div>
+    <div class="df"><label for="dfSilIni">Silêncio noturno</label><div class="lin"><select id="dfSilIni" aria-label="Das"></select><span>até</span><select id="dfSilFim" aria-label="Até"></select></div><small>Durante o silêncio só chegam os avisos fixos (📌).</small></div>
+    <button id="dfTeste" type="button">🔔 Testar notificação</button>
+    <div id="dfMsg" role="status"></div>
+    <details>
+      <summary>A notificação não faz barulho ou passa despercebida?</summary>
+      <p><b>Android:</b> abre as Definições do telemóvel → Apps → o navegador onde usas o chat (ou «Video Team Chat» se o instalaste no ecrã principal) → Notificações → escolhe a categoria deste site → Importância «Urgente» (som e aparece no ecrã) e escolhe aí o som. Em Bateria, põe a app «Sem restrições» para as notificações não ficarem à espera com o ecrã apagado.</p>
+      <p><b>iPhone/iPad:</b> as notificações só existem com o chat instalado no ecrã principal (Partilhar → «Adicionar ao ecrã principal»). Definições → Notificações → o chat → Sons e Banners «Persistentes».</p>
+      <p>O toque e a vibração acima valem quando o chat está aberto e na vibração das notificações. O som exato com a app fechada é o que o sistema escolher para este site.</p>
+    </details>
+  </div>
 </div>
 
 <script>
@@ -386,10 +417,11 @@
   function avisarNovas(lista) {
     var dosOutros = lista.filter(function (m) { return !(eu && m.pid === eu.pid); }).length;
     if (!dosOutros) return;
-    if (document.hidden) { naoLidas += dosOutros; document.title = '(' + naoLidas + ') ' + tituloBase; try { if (navigator.vibrate) navigator.vibrate(60); } catch (e) {} }
+    tocarToque(PF ? PF.toque : 'campainha');
+    if (document.hidden) { naoLidas += dosOutros; document.title = '(' + naoLidas + ') ' + tituloBase; try { if (navigator.vibrate) navigator.vibrate(PADROES[PF ? PF.vibra : 'longa'] || [300]); } catch (e) {} }
     else if (!noFim()) { $('novas').hidden = false; }
   }
-  document.addEventListener('visibilitychange', function () { if (!document.hidden) { naoLidas = 0; document.title = tituloBase; if (!ligado) ligar(); else sincronizar(); } });
+  document.addEventListener('visibilitychange', function () { try { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'vis', v: document.hidden ? 0 : 1 })); } catch (e) {} if (!document.hidden) { naoLidas = 0; document.title = tituloBase; if (!ligado) ligar(); else sincronizar(); } });
   $('novas').onclick = paraOFim;
   listaEl.addEventListener('scroll', function () { if (noFim()) $('novas').hidden = true; });
 
@@ -417,7 +449,7 @@
     var url = API.replace(/^http/, 'ws') + '/api/ws?k=' + token;
     try { ws = new WebSocket(url); } catch (e) { retomar(); return; }
     var w = ws;
-    w.onopen = function () { lastRx = Date.now(); tentativas = 0; ligado = true; estado(''); subtitulo(); sincronizar(); };
+    w.onopen = function () { lastRx = Date.now(); tentativas = 0; ligado = true; estado(''); subtitulo(); sincronizar(); try { w.send(JSON.stringify({ t: 'vis', v: document.hidden ? 0 : 1 })); } catch (e) {} };
     w.onmessage = function (e) {
       lastRx = Date.now();
       var d; try { d = JSON.parse(e.data); } catch (x) { return; }
@@ -697,6 +729,98 @@
   $('folha').addEventListener('click', function (e) { if (e.target === $('folha')) fecharFolha(); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') fecharFolha(); });
 
+  // ---------------------------------------------------------------- toques e preferencias de notificacao
+  var PF = null;                                   // preferencias desta pessoa (vem do servidor: valem em qualquer aparelho)
+  var PADROES = { nenhuma: [], curta: [120], longa: [300, 150, 300, 150, 500], sos: [200, 100, 200, 100, 200, 300, 500, 100, 500, 100, 500, 300, 200, 100, 200, 100, 200] };
+  var NOMES_TOQUE = { campainha: 'Campainha', alerta: 'Alerta', sino: 'Sino', duplo: 'Duplo bip', sirene: 'Sirene curta', pop: 'Pop' };
+  var NOMES_VIBRA = { nenhuma: 'Sem vibração', curta: 'Curta', longa: 'Longa', sos: 'SOS' };
+  var TOQUES_NOTAS = {            // [frequencia Hz (0 = pausa), segundos]
+    campainha: [[880, .12], [0, .05], [880, .12], [0, .05], [1175, .28]],
+    alerta: [[1000, .18], [700, .18], [1000, .18], [700, .18]],
+    sino: [[1568, .55]],
+    duplo: [[660, .12], [0, .07], [660, .12]],
+    sirene: [[600, .25], [900, .25], [600, .25], [900, .25]],
+    pop: [[520, .05], [0, .02], [780, .09]]
+  };
+  var ac = null;
+  function audioCtx() {
+    if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; } }
+    if (ac.state === 'suspended') { try { ac.resume(); } catch (e) {} }
+    return ac;
+  }
+  ['touchstart', 'click', 'keydown'].forEach(function (ev) { document.addEventListener(ev, function () { audioCtx(); }, { once: true, passive: true }); });   // os navegadores so deixam tocar depois de um toque
+  function tocarToque(nome) {
+    var c = audioCtx();
+    if (!c || c.state !== 'running') return;
+    var t0 = c.currentTime + 0.02;
+    (TOQUES_NOTAS[nome] || TOQUES_NOTAS.campainha).forEach(function (n) {
+      if (n[0]) {
+        var o = c.createOscillator(), g = c.createGain();
+        o.type = nome === 'sino' ? 'sine' : 'triangle';
+        o.frequency.value = n[0];
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(0.35, t0 + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + n[1]);
+        o.connect(g); g.connect(c.destination);
+        o.start(t0); o.stop(t0 + n[1] + 0.03);
+      }
+      t0 += n[1];
+    });
+  }
+
+  function opcao(sel, valor, txt) { var o = document.createElement('option'); o.value = valor; o.textContent = txt; sel.appendChild(o); }
+  function msgDefs(txt, mal) { var m = $('dfMsg'); m.textContent = txt || ''; m.style.color = mal ? 'var(--bad, #c62839)' : 'var(--mut)'; }
+  function preencherDefs() {
+    if (!PF) return;
+    var t = $('dfToque'), v = $('dfVibra'), i = $('dfInsiste'), a = $('dfSilIni'), b = $('dfSilFim');
+    if (!t.options.length) {
+      Object.keys(NOMES_TOQUE).forEach(function (k) { opcao(t, k, NOMES_TOQUE[k]); });
+      Object.keys(NOMES_VIBRA).forEach(function (k) { opcao(v, k, NOMES_VIBRA[k]); });
+      [[0, 'Nunca'], [3, 'Passados 3 minutos'], [5, 'Passados 5 minutos'], [10, 'Passados 10 minutos']].forEach(function (x) { opcao(i, x[0], x[1]); });
+      [a, b].forEach(function (s) { opcao(s, -1, 'Desligado'); for (var h = 0; h < 24; h++) opcao(s, h, (h < 10 ? '0' : '') + h + ':00'); });
+    }
+    t.value = PF.toque; v.value = PF.vibra; i.value = PF.insiste; a.value = PF.silencio_ini; b.value = PF.silencio_fim;
+    $('dfInsisteTxt').textContent = PF.insiste ? 'No máximo ' + ((PF.opcoes && PF.opcoes.max_lembretes) || 3) + ' lembretes. Pára assim que abres o chat.' : 'Só serás avisado uma vez por mensagem.';
+  }
+  function carregarPrefs() {
+    return http('/api/prefs').then(function (r) { if (r.s === 200 && r.j) { PF = r.j; preencherDefs(); } }).catch(function () {});
+  }
+  function guardarPrefs(parte) {
+    if (!PF) return;
+    Object.keys(parte).forEach(function (k) { PF[k] = parte[k]; });
+    http('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parte) }).then(function (r) {
+      if (r.s === 200 && r.j) { Object.keys(r.j).forEach(function (k) { PF[k] = r.j[k]; }); preencherDefs(); msgDefs('Guardado.'); }
+      else msgDefs('Não consegui guardar. Tenta outra vez.', true);
+    }).catch(function () { msgDefs('Sem ligação ao servidor.', true); });
+  }
+  function silencio() {
+    var a = +$('dfSilIni').value, b = +$('dfSilFim').value;
+    if ((a < 0) !== (b < 0)) { msgDefs('Escolhe a hora de início e a de fim.'); return; }
+    guardarPrefs({ silencio_ini: a, silencio_fim: b });
+  }
+  $('btDefs').onclick = function () { $('defs').hidden = false; msgDefs(''); if (!PF) carregarPrefs(); };
+  $('fechaDefs').onclick = function () { $('defs').hidden = true; };
+  $('defs').addEventListener('click', function (e) { if (e.target === $('defs')) $('defs').hidden = true; });
+  $('dfToque').onchange = function () { guardarPrefs({ toque: this.value }); tocarToque(this.value); };
+  $('dfOuvir').onclick = function () { audioCtx(); tocarToque($('dfToque').value); };
+  $('dfVibra').onchange = function () { guardarPrefs({ vibra: this.value }); try { if (navigator.vibrate) navigator.vibrate(PADROES[this.value] || []); } catch (e) {} };
+  $('dfSentir').onclick = function () { try { if (navigator.vibrate) navigator.vibrate(PADROES[$('dfVibra').value] || []); else msgDefs('Este aparelho não deixa o navegador vibrar.'); } catch (e) {} };
+  $('dfInsiste').onchange = function () { guardarPrefs({ insiste: +this.value }); };
+  $('dfSilIni').onchange = silencio; $('dfSilFim').onchange = silencio;
+  $('dfTeste').onclick = function () {
+    audioCtx();
+    var b = this;
+    if (pushSuportado() && Notification.permission !== 'granted') { msgDefs('Primeiro ativa as notificações (o sino 🔔 em cima).', true); return; }
+    b.disabled = true; msgDefs('A enviar…');
+    http('/api/push/teste', { method: 'POST' }).then(function (r) {
+      if (r.s === 200 && r.j && r.j.enviados) msgDefs('Enviada! Deve aparecer daqui a um instante.');
+      else if (r.s === 429) msgDefs('Espera uns segundos e tenta outra vez.', true);
+      else if (r.s === 200 && r.j && r.j.registados) msgDefs('O serviço de notificações do telemóvel não aceitou o teste. Toca no sino 🔔 para registar outra vez este aparelho.', true);
+      else if (r.s === 200) msgDefs('Este aparelho ainda não está registado. Toca no sino 🔔 para ativar as notificações.', true);
+      else msgDefs('Não foi possível enviar o teste.', true);
+    }).catch(function () { msgDefs('Sem ligação ao servidor.', true); }).then(function () { b.disabled = false; });
+  };
+
   // ---------------------------------------------------------------- PWA: instalar e notificacoes
   var IOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   function standalone() { return (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true; }
@@ -751,6 +875,7 @@
     online = {}; (s.online || []).forEach(function (p) { online[p] = 1; });
     desenhar(); subtitulo(); paraOFim();
     ligar();
+    carregarPrefs();
     if (pushSuportado() && servidorPush && Notification.permission === 'granted') subscrever().catch(function () {});
     mostrarDica();
   }).catch(function () { cartao('Sem ligação', 'Não consegui contactar o servidor. A tentar outra vez…'); setTimeout(function () { location.reload(); }, 6000); });

@@ -135,6 +135,42 @@ try:
         ana.wait_for_function("document.getElementById('dica').hidden", timeout=5000)
         ok(ana.evaluate("document.getElementById('btSino').classList.contains('on')"), 'a faixa some e o sino fica ligado')
 
+        # ---- definicoes das notificacoes (toque, vibracao, lembretes, silencio, teste)
+        def prefs_servidor():
+            r = urllib.request.Request(B + '/chat/api/prefs', headers={'X-Chat': tok['1']})
+            return json.loads(urllib.request.urlopen(r).read())
+        ok(ana.is_visible('#btDefs'), 'botao das definicoes de notificacao visivel')
+        ana.click('#btDefs')
+        ana.wait_for_selector('#defs:not([hidden])', timeout=5000)
+        ana.wait_for_function("document.getElementById('dfToque').options.length === 6", timeout=5000)
+        ok(ana.evaluate("document.getElementById('dfVibra').options.length === 4 && document.getElementById('dfInsiste').options.length === 4 && document.getElementById('dfSilIni').options.length === 25"), 'as listas (toques, vibracoes, lembretes, horas) estao preenchidas')
+        ok(ana.input_value('#dfToque') == 'campainha' and ana.input_value('#dfInsiste') == '5', 'valores por omissao')
+        ana.select_option('#dfToque', 'sirene')
+        ana.select_option('#dfVibra', 'sos')
+        ana.select_option('#dfInsiste', '10')
+        ana.select_option('#dfSilIni', '22')
+        ana.select_option('#dfSilFim', '7')
+        for _ in range(30):
+            pf = prefs_servidor()
+            if pf['toque'] == 'sirene' and pf['vibra'] == 'sos' and pf['insiste'] == 10 and pf['silencio_ini'] == 22 and pf['silencio_fim'] == 7:
+                break
+            time.sleep(0.2)
+        ok(pf['toque'] == 'sirene' and pf['vibra'] == 'sos' and pf['insiste'] == 10 and (pf['silencio_ini'], pf['silencio_fim']) == (22, 7), 'as escolhas ficam guardadas no servidor (valem em qualquer aparelho)')
+        ana.click('#dfOuvir')
+        ana.click('#dfSentir')
+        ana.click('#dfTeste')
+        ana.wait_for_function("document.getElementById('dfMsg').textContent.length > 0 && document.getElementById('dfMsg').textContent !== 'A enviar…'", timeout=15000)
+        ok('Enviada' in ana.inner_text('#dfMsg') or 'não aceitou' in ana.inner_text('#dfMsg'), 'testar notificacao responde na pagina: %s' % ana.inner_text('#dfMsg'))
+        ana.reload()
+        ana.wait_for_selector('#app:not([hidden])', timeout=8000)
+        ana.click('#btDefs')
+        ana.wait_for_function("document.getElementById('dfToque').value === 'sirene'", timeout=5000)
+        ok(ana.input_value('#dfInsiste') == '10', 'ao reabrir o chat as escolhas continuam la')
+        ana.click('#fechaDefs')
+        ok(ana.evaluate("document.getElementById('defs').hidden"), 'fechar o painel das definicoes')
+        ana.select_option  # (so para o leitor: o painel fecha e a conversa continua)
+        ok(ana.evaluate("typeof window.AudioContext !== 'undefined'"), 'o navegador deixa tocar o toque dentro da pagina')
+
         # ---- conversa
         ana.fill('#texto', 'Chego às 8h, entrada B https://exemplo.pt/mapa')
         ana.click('#enviar')
