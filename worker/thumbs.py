@@ -4,7 +4,7 @@ Correr de vez em quando (ex: quando entra gente nova):  python thumbs.py <PIN>
 import io, json, subprocess, sys, tempfile, base64, urllib.request
 from PIL import Image, ImageOps
 
-API = 'https://video-team.avkvideoshare.workers.dev'
+API = 'https://videoteam-api.mike-app.com'
 pin = sys.argv[1]
 api = sys.argv[2] if len(sys.argv) > 2 else API
 

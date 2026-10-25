@@ -9,7 +9,7 @@ const LOGIN_JS = read('login.js');
 const APP_JS = read('app.js');
 // editor «Equipa por sala» (motor + ecra), carregado antes do app.js
 const SALAS_JS = read('salas-motor.js') + '\n;' + read('salas.js');
-const SALAS_API = 'https://video-team.avkvideoshare.workers.dev';
+const SALAS_API = 'https://videoteam-api.mike-app.com';
 
 const ADMIN_URL = 'https://videoteam.mike-app.com/?admin=pedidos';
 function abrirAdmin(token) {
