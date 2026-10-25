@@ -73,7 +73,8 @@
       var crew = (j.crew || []).map(function (c) { return Object.assign({}, c, { name: String(c.name || '').replace(/\s*[_*].*$/, '').replace(/\s+/g, ' ').trim() || c.name }); });
       var allDays = j.days || [];
       var todayKey = keyOf(new Date());
-      var pdfHtml = j.prop ? '<a class="pdf" href="' + esc(cfg.api + '/pdf/' + j.prop + '?k=' + encodeURIComponent(cfg.pin) + '&n=' + encodeURIComponent(j.event || j.label || '')) + '" target="_blank" rel="noopener"><span>PDF</span>Proposta técnica</a>' : '';
+      var pdfHtml = j.prop ? '<a class="pdf" href="' + esc(cfg.api + '/pdf/' + j.prop + '?k=' + encodeURIComponent(cfg.pin) + '&n=' + encodeURIComponent(j.event || j.label || '')) + '" target="_blank" rel="noopener"><span>PDF</span>Proposta técnica</a>' +
+        '<a class="pdf share" style="margin-top:6px" href="' + esc(cfg.api + '/pdf/' + j.prop + '?k=' + encodeURIComponent(cfg.pin) + '&n=' + encodeURIComponent(j.event || j.label || '') + '&dl=1') + '" download><span>GUARDAR</span>Guardar o PDF</a>' : '';
 
       function bySectorHtml(people) {
         var bySector = {};
@@ -694,7 +695,8 @@
     var u = pdfUrl(e);
     if (!u && pdfNativoAttrs(e)) return '<a class="pdf" href="#"' + pdfNativoAttrs(e) + '><span>PDF</span>Proposta técnica</a>' +
       '<a class="pdf share" href="#" data-pdfg="1"' + pdfNativoAttrs(e) + ' style="margin-top:6px"><span>GUARDAR</span>Guardar o PDF neste aparelho</a>';
-    return u ? '<a class="pdf" href="' + esc(u) + '" target="_blank" rel="noopener"><span>PDF</span>Proposta técnica</a>' : '';
+    return u ? '<a class="pdf" href="' + esc(u) + '" target="_blank" rel="noopener"><span>PDF</span>Proposta técnica</a>' +
+      '<a class="pdf share" style="margin-top:6px" href="' + esc(u + '&dl=1') + '" download><span>GUARDAR</span>Guardar o PDF</a>' : '';
   }
 
   function pdfPill(e) {
@@ -898,6 +900,21 @@
   } catch (e) {}
   paint(true);
   load();
+
+  // Apps PC/Android: entram como dono logo ao abrir (a sessao do autenticador fica guardada neste aparelho; se acabou ou nunca houve, pede o codigo).
+  // Fecha-se com «x» ou tocando fora, e a escala abre na mesma.
+  if (!cfg.api && cfg.salasApi) {
+    // «A minha app e de dono»: o aparelho traz uma chave de sessao propria (revogavel no servidor), sem ser a chave mestra.
+    if (cfg.donoToken && recall('vt.salaspin') !== cfg.donoToken) store('vt.salaspin', cfg.donoToken);
+    var pedirDono = function () { withSalasPin(function () { var s = document.getElementById('sheet'); if (s) s.classList.remove('open'); }); };
+    setTimeout(function () {
+      var guardada = recall('vt.salaspin');
+      if (!guardada) { pedirDono(); return; }
+      fetch(cfg.salasApi + '/api/ping', { headers: { 'X-PIN': guardada } }).then(function (r) { return r.json(); })
+        .then(function (j) { if (j && j.role !== 'owner') { store('vt.salaspin', ''); pedirDono(); } })
+        .catch(function () {});     // sem ligacao: fica como esta
+    }, 1500);
+  }
   setInterval(function () { if (!document.hidden && !state.loading && keyOf(state.anchor) === TODAY) load(false, true); }, 10 * 60 * 1000);
   return 'app-ok';
 })

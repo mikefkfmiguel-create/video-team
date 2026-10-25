@@ -135,7 +135,7 @@ class MainActivity : Activity() {
             }
             url.startsWith(START) -> {
                 loginAttempts = 0
-                val cfg = JSONObject().put("search", BuildConfig.VT_SEARCH).put("salasApi", SALAS_API).put("webBase", WEB_BASE)
+                val cfg = JSONObject().put("search", BuildConfig.VT_SEARCH).put("salasApi", SALAS_API).put("webBase", WEB_BASE).put("donoToken", BuildConfig.VT_OWNER_TOKEN)
                 web.evaluateJavascript(salasJs, null)
                 web.evaluateJavascript("($appJs)($cfg)", null)
             }

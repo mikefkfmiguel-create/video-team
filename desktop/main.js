@@ -50,7 +50,7 @@ function createWindow(cfg) {
 
   let loginAttempts = 0;
   const loginCfg = JSON.stringify({ user: cfg.user, password: cfg.password });
-  const appCfg = JSON.stringify({ search: cfg.search || 'video', salasApi: SALAS_API });
+  const appCfg = JSON.stringify({ search: cfg.search || 'video', salasApi: SALAS_API, donoToken: cfg.ownerToken || '' });
 
   win.webContents.on('dom-ready', async () => {
     const url = win.webContents.getURL();

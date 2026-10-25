@@ -1,11 +1,11 @@
 // Entrada do DONO com o autenticador (TOTP, RFC 6238), em vez de uma chave fixa para decorar.
-// O dono escreve o codigo de 6 digitos da app de autenticador e recebe uma SESSAO (token aleatorio, 7 dias) que o ecra usa no lugar da chave
+// O dono escreve o codigo de 6 digitos da app de autenticador e recebe uma SESSAO (token aleatorio, 30 dias) que o ecra usa no lugar da chave
 // (cabecalho X-PIN, como ate aqui). A chave fixa (VT_PIN_ADMIN) continua a servir de recuperacao, e ha 8 codigos de recuperacao de uso unico.
 // KV `FOTOS`: totp:segredo (base32) · totp:pendente (15 min) · totp:ultimo (ultimo passo aceite) · totp:rec (hashes) · sess:<sha256 do token> · rl:<ip>
 // Nada disto se mistura com os pedidos de acesso da equipa (req:*).
 
 const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-export const SESSAO_S = 7 * 24 * 3600;
+export const SESSAO_S = 30 * 24 * 3600;
 const PREFIXO_SESSAO = 'S-';
 const LIMITE_FALHAS = 8;
 const JANELA_FALHAS_S = 600;
