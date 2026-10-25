@@ -55,6 +55,11 @@
   .row a.resp { display: inline-flex; align-items: center; height: 32px; padding: 0 10px; font-size: 12px; font-weight: 600; border-radius: 7px; background: var(--acc); color: #fff; text-decoration: none; }
   .row button.adm { background: var(--soft); color: var(--acc); }
   .badge { background: var(--acc); color: #fff; border-radius: 999px; font-size: 11px; padding: 1px 7px; margin-left: 6px; }
+  .resumo { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; }
+  .resumo span { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; font-size: 12px; color: var(--mut); }
+  .resumo span b { color: var(--ink); font-size: 14px; margin-right: 3px; }
+  .resumo span.on { border-color: #1f9d55; color: #1f9d55; }
+  .resumo span.esp { border-color: var(--acc); color: var(--acc); }
   .badge.on { background: #1f9d55; margin-left: 0; margin-right: 6px; align-self: center; }
   .empty2 { color: var(--mut); font-size: 13px; padding: 6px 2px; }
 </style>
@@ -220,7 +225,11 @@
         if (it.status === 'approved' && it.role === 'project') groups.projects.push(it);
         else (groups[it.status] || groups.other).push(it);
       });
-      var html = '';
+      // resumo no topo: quantos tem acesso, quantos estao ativos agora (visto ha menos de 15 min) e quantos esperam
+      var agoraMs = Date.now();
+      var ativosAgora = groups.approved.concat(groups.projects).filter(function (it) { return it.lastSeen && agoraMs - it.lastSeen < 15 * 60000; }).length;
+      var html = '<div class="resumo"><span><b>' + groups.approved.length + '</b> com acesso</span><span class="' + (ativosAgora ? 'on' : '') + '"><b>' + ativosAgora + '</b> ativo' + (ativosAgora === 1 ? '' : 's') + ' agora</span>' +
+        '<span><b>' + groups.projects.length + '</b> link' + (groups.projects.length === 1 ? '' : 's') + ' de projeto</span><span class="' + (groups.pending.length ? 'esp' : '') + '"><b>' + groups.pending.length + '</b> a aguardar</span></div>';
       html += section('A aguardar aprovação', groups.pending, function (it) {
         var b = actBtn(it.token, 'deny', 'no', 'Recusar');
         if (myRank >= RANK.owner) b += actBtn(it.token, 'approve', 'adm', 'Full admin', 'fulladmin');
