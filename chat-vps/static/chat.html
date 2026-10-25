@@ -116,6 +116,7 @@
   .df small { display: block; color: var(--mut); font-size: 12px; margin-top: 4px; }
   #dfDiag { font-size: 12px; color: var(--mut); background: var(--soft); border-radius: 10px; padding: 8px 10px; margin: 0 0 12px; line-height: 1.55; }
   #dfDiag b { color: var(--ink); }
+  #dfTesteTodos { width: 100%; height: 36px; margin-top: 6px; border: 0; border-radius: 9px; background: var(--soft); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
   #dfMsg { min-height: 18px; font-size: 13px; margin: 8px 0 12px; }
   #defs details { font-size: 13px; color: var(--mut); border-top: 1px solid var(--line); padding-top: 10px; }
   #defs summary { cursor: pointer; color: var(--ink); font-weight: 600; }
@@ -208,7 +209,8 @@
     <div class="df"><label for="dfInsiste">Se eu não ler, avisar outra vez</label><select id="dfInsiste"></select><small id="dfInsisteTxt"></small></div>
     <div class="df"><label for="dfSilIni">Silêncio noturno</label><div class="lin"><select id="dfSilIni" aria-label="Das"></select><span>até</span><select id="dfSilFim" aria-label="Até"></select></div><small>Durante o silêncio só chegam os avisos fixos (📌).</small></div>
     <div id="dfDiag" aria-label="Diagnóstico"></div>
-    <button id="dfTeste" type="button">🔔 Testar notificação</button>
+    <button id="dfTeste" type="button">🔔 Testar neste aparelho</button>
+    <button id="dfTesteTodos" type="button" class="sec">Testar em todos os meus aparelhos</button>
     <div id="dfMsg" role="status"></div>
     <details>
       <summary>A notificação não faz barulho ou passa despercebida?</summary>
@@ -828,19 +830,24 @@
   $('dfSentir').onclick = function () { try { if (navigator.vibrate) navigator.vibrate(PADROES[$('dfVibra').value] || []); else msgDefs('Este aparelho não deixa o navegador vibrar.'); } catch (e) {} };
   $('dfInsiste').onchange = function () { guardarPrefs({ insiste: +this.value }); };
   $('dfSilIni').onchange = silencio; $('dfSilFim').onchange = silencio;
-  $('dfTeste').onclick = function () {
+  function testarNotificacao(todos, botao) {
     audioCtx();
-    var b = this;
     if (pushSuportado() && Notification.permission !== 'granted') { msgDefs('Primeiro ativa as notificações (o sino 🔔 em cima).', true); return; }
-    b.disabled = true; msgDefs('A enviar…');
-    http('/api/push/teste', { method: 'POST' }).then(function (r) {
-      if (r.s === 200 && r.j && r.j.enviados) msgDefs('Enviada! Deve aparecer daqui a um instante.');
+    botao.disabled = true; msgDefs('A enviar…');
+    var meu = todos || !pushSuportado() ? Promise.resolve('') : navigator.serviceWorker.ready.then(function (reg) { return reg.pushManager.getSubscription(); }).then(function (s) { return s ? s.endpoint : ''; }).catch(function () { return ''; });
+    meu.then(function (ep) {
+      return http('/api/push/teste', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ep ? { endpoint: ep } : {}) });
+    }).then(function (r) {
+      if (r.s === 200 && r.j && r.j.enviados) msgDefs(todos ? 'Enviada para ' + r.j.enviados + ' aparelho(s).' : 'Enviada para este aparelho! Deve aparecer daqui a um instante.');
       else if (r.s === 429) msgDefs('Espera uns segundos e tenta outra vez.', true);
+      else if (r.s === 200 && r.j && r.j.este === false) msgDefs('Este aparelho não está registado neste link. Toca no sino 🔔 para o registar (há ' + (r.j.registados || 0) + ' registado(s) noutros aparelhos).', true);
       else if (r.s === 200 && r.j && r.j.registados) msgDefs('O serviço de notificações do telemóvel não aceitou o teste. Toca no sino 🔔 para registar outra vez este aparelho.', true);
       else if (r.s === 200) msgDefs('Este aparelho ainda não está registado. Toca no sino 🔔 para ativar as notificações.', true);
       else msgDefs('Não foi possível enviar o teste.', true);
-    }).catch(function () { msgDefs('Sem ligação ao servidor.', true); }).then(function () { b.disabled = false; });
-  };
+    }).catch(function () { msgDefs('Sem ligação ao servidor.', true); }).then(function () { botao.disabled = false; });
+  }
+  $('dfTeste').onclick = function () { testarNotificacao(false, this); };
+  $('dfTesteTodos').onclick = function () { testarNotificacao(true, this); };
 
   // ---------------------------------------------------------------- PWA: instalar e notificacoes
   var IOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
