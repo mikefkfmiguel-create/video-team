@@ -838,6 +838,15 @@
     '@media (max-width:760px){.top{padding:8px 12px}#range{display:none}.top>.brand{order:1;margin-right:0}.top>.mark{order:2;margin-right:auto;position:static}.top>.ctl{order:3}.mark span{display:none}.mark .sym{width:16px;height:16px}input[type=search]{width:120px}select{max-width:150px}.grid{grid-template-columns:150px repeat(var(--n),96px)}.who .av{display:none}.who small{display:none}.dayv{padding:12px}}'
   ].join('\n');
 
+  // Apps PC/Android com chave de dono: botao «Admin» que abre o painel de pedidos de acesso (o do site) ja como dono
+  if (!cfg.api && cfg.salasApi && cfg.donoToken && !cfg.onRequests) {
+    cfg.onRequestsLabel = 'Admin';
+    cfg.onRequests = function () {
+      if (window.VTNativo && window.VTNativo.abrirAdmin) window.VTNativo.abrirAdmin();
+      else window.open((cfg.webBase || 'https://videoteam.mike-app.com/') + '?admin=pedidos', '_blank');
+    };
+  }
+
   document.open();
   document.write('<!doctype html><html lang="pt"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Video Team</title>' + (cfg.head || '') + '<style>' + CSS + '</style></head><body>' +
     '<div class="top"><div class="brand"><h1>VIDEO<span> TEAM</span></h1><span id="range"></span></div>' +
@@ -846,7 +855,7 @@
     (forceOnly ? '' : '<label class="tog"><input type="checkbox" id="only"> só com marcação</label>') + '<select id="group"></select><input type="search" id="q" placeholder="Procurar…">' +
     '<button class="btn" id="reload" title="Atualizar">⟳</button><span id="status"></span>' +
     (cfg.expiresAt ? '<span id="expires" class="exp">acesso até ' + fmtExpiry(cfg.expiresAt) + '</span>' : '') +
-    (cfg.onRequests ? '<button class="btn" id="requests" title="Pedidos de acesso">Pedidos</button>' : '') +
+    (cfg.onRequests ? '<button class="btn" id="requests" title="Pedidos de acesso">' + (cfg.onRequestsLabel || 'Pedidos') + '</button>' : '') +
     (cfg.onLogout ? '<button class="btn" id="logout" title="Sair / mudar código">Sair</button>' : '') + '</div>' +
     '<a class="mark" title="MIKE APPS"><svg class="sym" viewBox="72 72 368 368" aria-hidden="true"><defs><linearGradient id="vtF" x1=".1" y1="0" x2=".9" y2="1"><stop offset="0" stop-color="#1246E6"/><stop offset="1" stop-color="#2E7BFF"/></linearGradient><linearGradient id="vtC" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22D3EE"/><stop offset="1" stop-color="#5FE9FF"/></linearGradient><linearGradient id="vtP" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2E7BFF"/><stop offset="1" stop-color="#22D3EE"/></linearGradient></defs><rect x="72" y="72" width="168" height="168" rx="30" fill="url(#vtF)"/><rect x="272" y="72" width="168" height="168" rx="64" fill="url(#vtC)"/><circle cx="156" cy="356" r="84" fill="#3B8CFF"/><path d="M306 296L306 416L410 356Z" fill="url(#vtP)" stroke="url(#vtP)" stroke-width="30" stroke-linejoin="round"/></svg><span><b>MIKE</b> APPS</span></a></div>' +
     '<div class="main" id="main"></div>' +

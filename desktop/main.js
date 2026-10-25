@@ -11,6 +11,16 @@ const APP_JS = read('app.js');
 const SALAS_JS = read('salas-motor.js') + '\n;' + read('salas.js');
 const SALAS_API = 'https://video-team.avkvideoshare.workers.dev';
 
+const ADMIN_URL = 'https://videoteam.mike-app.com/?admin=pedidos';
+function abrirAdmin(token) {
+  const w = new BrowserWindow({ width: 1200, height: 850, title: 'Video Team · Admin', backgroundColor: '#0C1020', icon: path.join(__dirname, 'icon.ico'), autoHideMenuBar: true, webPreferences: { partition: 'persist:admin' } });
+  w.webContents.on('dom-ready', () => {
+    w.webContents.executeJavaScript(`(function(){try{if(localStorage.getItem('vt.pin')!==${JSON.stringify(token)}){localStorage.setItem('vt.pin',${JSON.stringify(token)});location.reload();}}catch(e){}})()`).catch(() => {});
+  });
+  w.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
+  w.loadURL(ADMIN_URL);
+}
+
 function configDir() {
   if (process.env.PORTABLE_EXECUTABLE_DIR) return process.env.PORTABLE_EXECUTABLE_DIR;
   if (app.isPackaged) return path.dirname(process.execPath);
@@ -45,7 +55,10 @@ function createWindow(cfg) {
   win.maximize();
 
   // links para fora (propostas, etc.) abrem no browser normal
-  win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (cfg.ownerToken && url.indexOf(ADMIN_URL) === 0) { abrirAdmin(cfg.ownerToken); return { action: 'deny' }; }   // painel de admin: ja como dono
+    shell.openExternal(url); return { action: 'deny' };
+  });
   win.on('page-title-updated', (e) => e.preventDefault());
 
   let loginAttempts = 0;
