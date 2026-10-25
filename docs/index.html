@@ -55,6 +55,7 @@
   .row a.resp { display: inline-flex; align-items: center; height: 32px; padding: 0 10px; font-size: 12px; font-weight: 600; border-radius: 7px; background: var(--acc); color: #fff; text-decoration: none; }
   .row button.adm { background: var(--soft); color: var(--acc); }
   .badge { background: var(--acc); color: #fff; border-radius: 999px; font-size: 11px; padding: 1px 7px; margin-left: 6px; }
+  .badge.on { background: #1f9d55; margin-left: 0; margin-right: 6px; align-self: center; }
   .empty2 { color: var(--mut); font-size: 13px; padding: 6px 2px; }
 </style>
 </head>
@@ -228,13 +229,14 @@
       }, 'Ninguém à espera.');
       html += section('Com acesso', groups.approved, function (it) {
         var badge = ROLE_LABEL[it.role] ? '<span class="badge">' + ROLE_LABEL[it.role] + '</span>' : '';
+        var ativo = it.lastSeen && Date.now() - it.lastSeen < 15 * 60000 ? '<span class="badge on">ativo agora</span>' : '';
         // so revoga quem estiver estritamente abaixo do teu nivel
         var canRevoke = (RANK[it.role || 'video'] || 0) < myRank;
-        return badge + respostaLink(it) + (canRevoke ? actBtn(it.token, 'revoke', 'no', 'Revogar') : '');
-      }, 'Ainda ninguém.', function (it) { return it.expiresAt ? ' · expira ' + when(it.expiresAt) : ''; });
+        return ativo + badge + respostaLink(it) + (canRevoke ? actBtn(it.token, 'revoke', 'no', 'Revogar') : '');
+      }, 'Ainda ninguém.', detalheAcesso);
       html += section('Projetos partilhados', groups.projects, function (it) {
         return actBtn(it.token, 'revoke', 'no', 'Revogar');
-      }, 'Nenhum ainda — abre um trabalho na escala e usa "Partilhar".', function (it) { return it.expiresAt ? ' · expira ' + when(it.expiresAt) : ''; });
+      }, 'Nenhum ainda — abre um trabalho na escala e usa "Partilhar".', detalheAcesso);
       document.getElementById('lists').innerHTML = html;
       document.querySelectorAll('[data-act]').forEach(function (b) {
         b.onclick = function () {
@@ -257,6 +259,22 @@
       'Se não entrar, responde-me a este email.\n\nMike';
     var href = 'mailto:' + encodeURIComponent(it.email) + '?subject=' + encodeURIComponent('Acesso ao Video Team aprovado') + '&body=' + encodeURIComponent(corpo);
     return '<a class="resp" href="' + esc(href) + '" target="_blank" rel="noopener" title="Escrever ao ' + esc(it.name || '') + ' a dizer que foi aprovado">Responder</a>';
+  }
+
+  // «há 5 min», «há 3 h», «há 2 dias»
+  function ha(ts) {
+    var m = Math.max(0, Math.round((Date.now() - ts) / 60000));
+    if (m < 2) return 'agora mesmo';
+    if (m < 60) return 'há ' + m + ' min';
+    if (m < 48 * 60) return 'há ' + Math.round(m / 60) + ' h';
+    return 'há ' + Math.round(m / 1440) + ' dias';
+  }
+
+  // quem tem acesso, desde quando, quando entrou pela ultima vez e ate quando
+  function detalheAcesso(it) {
+    return (it.approvedAt ? ' · aprovado ' + when(it.approvedAt) : '') +
+      ' · ' + (it.lastSeen ? 'visto ' + ha(it.lastSeen) : 'sem entradas registadas') +
+      (it.expiresAt ? ' · expira ' + when(it.expiresAt) : '');
   }
 
   function actBtn(token, act, cls, label, role) {
