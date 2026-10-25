@@ -680,14 +680,23 @@
   }
 
   // guardar=true: o Worker responde com «attachment» (dl=1) e a propria app guarda o ficheiro (Android: pasta Transferencias; PC: janela «Guardar como»)
+  function avisoPdf(msg) { var s = document.getElementById('status'); if (s) { s.textContent = msg; setTimeout(function () { s.textContent = ''; }, 6000); } }
+
   function abrirPdfNativo(prop, nome, guardar) {
     withSalasPin(function (k) {
       var sh = document.getElementById('sheet');
       if (sh && sh.querySelector('#spForm')) sh.classList.remove('open');
-      var u = cfg.salasApi + '/pdf/' + encodeURIComponent(prop) + '?k=' + encodeURIComponent(k) + '&d=' + (state.dmy || '') + '&n=' + encodeURIComponent(nome) + (guardar ? '&dl=1' : '');
-      var a = document.createElement('a'); a.href = u;
-      if (!guardar) { a.target = '_blank'; a.rel = 'noopener'; }
-      document.body.appendChild(a); a.click(); a.remove();
+      // a chave de dono NAO vai no endereco do PDF: pede-se um bilhete de 5 min, so para este PDF
+      fetch(cfg.salasApi + '/api/pdf-bilhete?id=' + encodeURIComponent(prop), { headers: { 'X-PIN': k } })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (!j || !j.t) { store('vt.salaspin', ''); avisoPdf('Sem acesso ao PDF: volta a abrir a app e entra como dono.'); return; }
+          var u = cfg.salasApi + '/pdf/' + encodeURIComponent(prop) + '?t=' + encodeURIComponent(j.t) + '&d=' + (state.dmy || '') + '&n=' + encodeURIComponent(nome) + (guardar ? '&dl=1' : '');
+          var a = document.createElement('a'); a.href = u;
+          if (!guardar) { a.target = '_blank'; a.rel = 'noopener'; }
+          document.body.appendChild(a); a.click(); a.remove();
+        })
+        .catch(function () { avisoPdf('Sem ligação ao servidor.'); });
     });
   }
 

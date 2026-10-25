@@ -288,6 +288,14 @@ async function handleAdmin(url, req, env, h, myRole) {
   return json({ error: 'nada aqui' }, 404, h);
 }
 
+function aleatorioB32(n) {
+  const B = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567', b = new Uint8Array(n);
+  crypto.getRandomValues(b);
+  let s = '';
+  for (const x of b) s += B[x & 31];
+  return s;
+}
+
 // 'owner' e a tua chave fixa; os outros niveis vem de um pedido aprovado — ver RANK
 async function roleOf(pin, env) {
   if (!pin) return null;
@@ -401,7 +409,21 @@ export default {
       if (req.method !== 'GET' && !url.pathname.startsWith('/api/admin/')) return json({ error: 'metodo' }, 405, h);
 
       const pin = req.headers.get('X-PIN') || url.searchParams.get('k');
-      const role = await roleOf(pin, env);
+      let role = await roleOf(pin, env);
+
+      // BILHETE DE PDF (apps PC/Android): a chave de dono nao vai no endereco do PDF. A app pede um bilhete (por cabecalho, so dono/admin),
+      // que serve 5 min e so para este PDF: /api/pdf-bilhete?id=71796 -> {t}  ·  /pdf/71796?t=<bilhete>
+      if (url.pathname === '/api/pdf-bilhete') {
+        if (!role || (RANK[role] ?? -1) < RANK.admin) { await new Promise((r) => setTimeout(r, 800)); return json({ error: 'pin' }, 401, h); }
+        const id = (url.searchParams.get('id') || '').replace(/\D/g, '');
+        if (!id) return json({ error: 'id' }, 400, h);
+        const bilhete = aleatorioB32(24);
+        await env.FOTOS.put(`pdft:${bilhete}`, id, { expirationTtl: 300 });
+        return json({ ok: true, t: bilhete }, 200, h);
+      }
+      const bilheteUrl = url.searchParams.get('t');
+      const pdfRota = url.pathname.match(/^\/pdf\/(\d+)$/);
+      if (!role && bilheteUrl && pdfRota && /^[A-Z2-7]{20,60}$/.test(bilheteUrl) && (await env.FOTOS.get(`pdft:${bilheteUrl}`)) === pdfRota[1]) role = 'owner';
 
       if (url.pathname.startsWith('/api/admin/')) {
         if ((RANK[role] ?? -1) < RANK.admin) {

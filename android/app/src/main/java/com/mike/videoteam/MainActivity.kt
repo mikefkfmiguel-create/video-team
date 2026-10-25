@@ -28,7 +28,7 @@ class MainActivity : Activity() {
     companion object {
         const val HOST = "7eventos.avk.pt"
         const val START = "http://$HOST/7Eventos/EscalasTecnicos/GetPeriodoJS"
-        const val SALAS_API = "https://video-team.avkvideoshare.workers.dev"
+        const val SALAS_API = "https://videoteam-api.mike-app.com"
         const val WEB_BASE = "https://videoteam.mike-app.com/"      // onde abrem os links de evento (?p=...)
         const val PEDIDO_CONTACTOS = 4242
         const val MAX_CONTACTOS = 3000
