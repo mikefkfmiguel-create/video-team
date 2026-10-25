@@ -171,7 +171,7 @@ async def main():
         ok((capt.get('headers') or {}).get('Urgency') == 'high' and capt.get('ttl') == 12 * 3600, 'o push sai com urgencia alta (o Android entrega logo, mesmo parado)')
 
         s, pf = await api('GET', '/chat/api/prefs', k=tok['12'])
-        ok(s == 200 and pf['toque'] == 'campainha' and pf['vibra'] == 'longa' and pf['insiste'] == 5 and pf['silencio_ini'] == -1 and 'sirene' in pf['opcoes']['toques'] and pf['opcoes']['max_lembretes'] == 3, 'preferencias por omissao (toque, vibracao longa, lembrete aos 5 min)')
+        ok(s == 200 and isinstance(pf['aparelhos'], int) and pf['toque'] == 'campainha' and pf['vibra'] == 'longa' and pf['insiste'] == 5 and pf['silencio_ini'] == -1 and 'sirene' in pf['opcoes']['toques'] and pf['opcoes']['max_lembretes'] == 3, 'preferencias por omissao (toque, vibracao longa, lembrete aos 5 min)')
         ok((await api('GET', '/chat/api/prefs'))[0] == 401, 'preferencias: sem link, 401')
         for mau in ({'toque': 'xx'}, {'vibra': 'xx'}, {'insiste': 7}, {'insiste': True}, {'silencio_ini': 24}, {'silencio_ini': 'a'}, {'silencio_fim': 1.5}):
             ok((await api('POST', '/chat/api/prefs', k=tok['12'], corpo=mau))[0] == 400, 'preferencia invalida recusada %s' % json.dumps(mau))

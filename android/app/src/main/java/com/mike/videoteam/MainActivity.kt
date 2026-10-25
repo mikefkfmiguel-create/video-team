@@ -155,6 +155,30 @@ class MainActivity : Activity() {
      * Para nao entregar a agenda inteira, a pagina diz que nomes procura (3 letras de cada nome da equipa) e so voltam os contactos parecidos.
      */
     inner class Nativo {
+        /**
+         * Botao 🔔 da escala: abre o ecra do Android com o interruptor «Todas as notificacoes» do Chrome (ou do navegador por omissao).
+         * Uma pagina web nao consegue chegar aqui (o Chrome bloqueia atalhos para as Definicoes), por isso e esta app que o faz.
+         */
+        @JavascriptInterface
+        fun abrirNotificacoes(): Boolean {
+            if (!paginaDoHost) return false
+            val pm = packageManager
+            val candidatos = mutableListOf("com.android.chrome")
+            try {
+                val nav = pm.resolveActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://things-on.mike-app.com/")), PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName
+                if (nav != null && nav != "android") candidatos.add(0, nav)
+            } catch (e: Exception) { }
+            val pacote = candidatos.firstOrNull { p -> try { pm.getPackageInfo(p, 0); true } catch (e: Exception) { false } } ?: return false
+            runOnUiThread {
+                try {
+                    startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, pacote).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                } catch (e: Exception) {
+                    try { startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$pacote")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e2: Exception) { }
+                }
+            }
+            return true
+        }
+
         /** Botao «Admin» da escala: abre o painel de pedidos do site, na propria app (so a partir da pagina do 7Eventos). */
         @JavascriptInterface
         fun abrirAdmin() {

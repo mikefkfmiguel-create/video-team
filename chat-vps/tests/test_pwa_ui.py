@@ -156,6 +156,8 @@ try:
                 break
             time.sleep(0.2)
         ok(pf['toque'] == 'sirene' and pf['vibra'] == 'sos' and pf['insiste'] == 10 and (pf['silencio_ini'], pf['silencio_fim']) == (22, 7), 'as escolhas ficam guardadas no servidor (valem em qualquer aparelho)')
+        ana.wait_for_function("document.getElementById('dfDiag').innerText.includes('Aparelhos registados para ti: 1')", timeout=5000)
+        ok('Notificações no navegador' in ana.inner_text('#dfDiag') and 'Aberto como' in ana.inner_text('#dfDiag') and 'Versão da página' in ana.inner_text('#dfDiag'), 'o painel mostra o diagnostico (permissao, modo, aparelhos, versao)')
         ana.click('#dfOuvir')
         ana.click('#dfSentir')
         ana.click('#dfTeste')

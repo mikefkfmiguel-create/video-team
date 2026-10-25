@@ -1163,7 +1163,7 @@ def criar_app(pasta, segredo, vapid_sub=VAPID_SUB_PADRAO):
     @r.get(P + '/api/prefs')
     async def prefs_get(req):
         q = await chat.exige(req)
-        return json_resp({**chat.pref_publica(q['token']), 'opcoes': {'toques': list(TOQUES), 'vibras': {k: v for k, v in VIBRAS.items()}, 'insiste': list(INSISTE_OPCOES), 'max_lembretes': MAX_LEMBRETES}, 'push': bool(chat.vapid)})
+        return json_resp({**chat.pref_publica(q['token']), 'opcoes': {'toques': list(TOQUES), 'vibras': {k: v for k, v in VIBRAS.items()}, 'insiste': list(INSISTE_OPCOES), 'max_lembretes': MAX_LEMBRETES}, 'push': bool(chat.vapid), 'aparelhos': chat.bd.um('SELECT COUNT(*) AS n FROM push WHERE token=?', q['token'])['n']})
 
     @r.post(P + '/api/prefs')
     async def prefs_post(req):
