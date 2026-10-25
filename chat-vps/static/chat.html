@@ -845,7 +845,7 @@
     var d = $('dica'), t = $('dicaTxt'), sim = $('dicaSim'), nao = $('dicaNao'), sino = $('btSino');
     var feita = ler('vt.chat.dica') === '1';
     var pode = pushSuportado() && servidorPush;
-    sino.hidden = !pode || Notification.permission === 'denied';
+    sino.hidden = !pode;                      // bloqueadas tambem se ve: tocar no sino explica como desbloquear
     sino.classList.toggle('on', pode && Notification.permission === 'granted');
     d.hidden = true;
     if (feita && !instalar) return;
@@ -854,9 +854,24 @@
     if (instalar && !standalone()) { t.textContent = 'Instala o chat no ecrã principal para o abrires como uma app.'; sim.textContent = 'Instalar'; sim.hidden = false; sim.onclick = function () { instalar.prompt(); instalar = null; d.hidden = true; }; d.hidden = false; }
   }
   $('dicaNao').onclick = function () { guardar('vt.chat.dica', '1'); $('dica').hidden = true; };
+  // notificacoes bloqueadas no navegador: nao ha alert() (feio e nao deixa copiar); a faixa de cima explica o caminho e volta a verificar
+  function mostrarBloqueio() {
+    var d = $('dica'), tx = $('dicaTxt'), sim = $('dicaSim');
+    tx.textContent = IOS && !standalone()
+      ? 'No iPhone as notificações só funcionam com o chat instalado: toca em Partilhar (⬆︎) → «Adicionar ao ecrã principal» e abre-o por esse ícone.'
+      : 'As notificações estão bloqueadas neste navegador. Toca no ícone à esquerda do endereço → Permissões → Notificações → Permitir (ou Definições do navegador → Definições do site → Notificações).';
+    sim.textContent = 'Já permiti'; sim.hidden = false;
+    sim.onclick = function () {
+      if (!pushSuportado()) return;
+      var fim = function () { guardar('vt.chat.dica', '1'); d.hidden = true; mostrarDica(); };
+      if (Notification.permission === 'granted') subscrever().then(fim, function () { tx.textContent = 'Permitido, mas não consegui registar este aparelho. Tenta outra vez daqui a pouco.'; });
+      else ativarNotificacoes().then(fim, function () { tx.textContent = 'Ainda estão bloqueadas. Confirma nas definições do site (Notificações → Permitir) e volta a tocar em «Já permiti».'; });
+    };
+    d.hidden = false;
+  }
   $('btSino').onclick = function () {
-    if (Notification.permission === 'granted') { alert('As notificações já estão ativas neste aparelho.'); return; }
-    ativarNotificacoes().catch(function () { alert('As notificações ficaram bloqueadas. Para as ativar, abre as definições do navegador para este site.'); });
+    if (Notification.permission === 'granted') { estado('As notificações já estão ativas neste aparelho. Usa o ⚙ para as testar.'); setTimeout(function () { estado(''); }, 4000); return; }
+    ativarNotificacoes().catch(mostrarBloqueio);
   };
 
   // ---------------------------------------------------------------- arranque
