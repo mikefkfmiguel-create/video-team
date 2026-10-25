@@ -20,11 +20,12 @@ android {
         applicationId = "com.mike.videoteam"
         minSdk = 26
         targetSdk = 35
-        versionCode = 22
-        versionName = "1.21"
+        versionCode = 23
+        versionName = "1.22"
         buildConfigField("String", "VT_USER", "\"${secret("user")}\"")
         buildConfigField("String", "VT_PASSWORD", "\"${secret("password")}\"")
         buildConfigField("String", "VT_SEARCH", "\"${secret("search", "video")}\"")
+        buildConfigField("String", "VT_OWNER_TOKEN", "\"${secret("ownerToken")}\"")
     }
 
     sourceSets["main"].assets.srcDirs("src/main/assets", "../../shared")
