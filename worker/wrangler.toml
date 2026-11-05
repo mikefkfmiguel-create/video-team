@@ -1,6 +1,9 @@
 name = "video-team"
 main = "src/index.js"
 compatibility_date = "2026-09-01"
+# Reserva em workers.dev (redes que bloqueiam mike-app.com). Sem esta linha um deploy com `routes` volta a desliga-lo.
+workers_dev = true
+preview_urls = false
 # Endereco proprio da API (o workers.dev continua a funcionar para as apps antigas)
 routes = [{ pattern = "videoteam-api.mike-app.com", custom_domain = true }]
 
